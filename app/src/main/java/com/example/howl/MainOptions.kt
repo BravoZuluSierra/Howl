@@ -169,7 +169,7 @@ fun PowerLevelPanel(
         )
         Row {
             Button(
-                onClick = { onPowerChange(maxOf(0, power - 1)) },
+                onClick = { onPowerChange(maxOf(0, power - DataRepository.miscOptionsState.value.powerStepSize)) },
                 modifier = Modifier.size(68.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -177,7 +177,7 @@ fun PowerLevelPanel(
             }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
-                onClick = { onPowerChange(power + 1) },
+                onClick = { onPowerChange(power + DataRepository.miscOptionsState.value.powerStepSize) },
                 modifier = Modifier.size(68.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {

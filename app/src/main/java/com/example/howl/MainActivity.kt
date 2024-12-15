@@ -89,7 +89,7 @@ class MainActivity : ComponentActivity() {
                                 val pulses: List<Pulse> = times.map {
                                     Generator.getPulseAtTime(time = it)
                                 }
-                                //Log.d("DGCoyote", "T=$currentTime $pulses")
+                                // Log.d("DGCoyote", "T=$currentTime $pulses")
                                 if (connected == true and mainOptionsState.globalMute == false)
                                     DGCoyote.sendPulse(
                                         channelAStrength = mainOptionsState.channelAPower,
@@ -119,7 +119,7 @@ class MainActivity : ComponentActivity() {
                                             time = it,
                                         )
                                     }
-                                    //Log.d("DGCoyote", "T=$currentPosition $pulses")
+                                    // Log.d("DGCoyote", "T=$currentPosition $pulses")
                                     if (connected == true and mainOptionsState.globalMute == false)
                                         DGCoyote.sendPulse(
                                             channelAStrength = mainOptionsState.channelAPower,

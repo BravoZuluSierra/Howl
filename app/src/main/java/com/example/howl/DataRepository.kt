@@ -5,6 +5,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlin.Boolean
 import kotlin.time.TimeMark
 
 object DataRepository {
@@ -18,6 +19,9 @@ object DataRepository {
 
     private val _mainOptionsState = MutableStateFlow(MainOptionsState())
     val mainOptionsState: StateFlow<MainOptionsState> = _mainOptionsState.asStateFlow()
+
+    private val _miscOptionsState = MutableStateFlow(MiscOptionsState())
+    val miscOptionsState: StateFlow<MiscOptionsState> = _miscOptionsState.asStateFlow()
 
     private val _generatorState = MutableStateFlow(GeneratorState())
     val generatorState: StateFlow<GeneratorState> = _generatorState.asStateFlow()
@@ -47,6 +51,10 @@ object DataRepository {
         _mainOptionsState.update { newMainOptionsState }
     }
 
+    fun setMiscOptionsState(newMiscOptionsState: MiscOptionsState) {
+        _miscOptionsState.update { newMiscOptionsState }
+    }
+
     fun setCoyoteBatteryLevel(percent: Int) {
         _coyoteBatteryLevel.update { percent }
     }
@@ -56,15 +64,13 @@ object DataRepository {
     }
 
     fun setChannelAPower(power: Int) {
-        if(power > coyoteParametersState.value.channelALimit)
-            return
-        _mainOptionsState.update { it.copy(channelAPower = power)}
+        val newPower: Int = power.coerceIn(0..coyoteParametersState.value.channelALimit)
+        _mainOptionsState.update { it.copy(channelAPower = newPower)}
     }
 
     fun setChannelBPower(power: Int) {
-        if(power > coyoteParametersState.value.channelBLimit)
-            return
-        _mainOptionsState.update { it.copy(channelBPower = power)}
+        val newPower: Int = power.coerceIn(0..coyoteParametersState.value.channelBLimit)
+        _mainOptionsState.update { it.copy(channelBPower = newPower)}
     }
 
     fun setGlobalMute(muted: Boolean) {
@@ -100,11 +106,16 @@ object DataRepository {
             channelBIntensityBalance = coyoteParametersState.value.channelBIntensityBalance,
             channelAFrequencyBalance = coyoteParametersState.value.channelAFrequencyBalance,
             channelBFrequencyBalance = coyoteParametersState.value.channelBFrequencyBalance,
-            frequencyInversion = funscriptAdvancedControlsState.value.frequencyInversion,
-            frequencySeparation = funscriptAdvancedControlsState.value.frequencySeparation,
+            frequencyInversionA = funscriptAdvancedControlsState.value.frequencyInversionA,
+            frequencyInversionB = funscriptAdvancedControlsState.value.frequencyInversionB,
             channelBiasFactor = funscriptAdvancedControlsState.value.channelBiasFactor,
+            frequencyModEnable = funscriptAdvancedControlsState.value.frequencyModEnable,
+            frequencyModStrength = funscriptAdvancedControlsState.value.frequencyModStrength,
+            frequencyModPeriod = funscriptAdvancedControlsState.value.frequencyModPeriod,
+            frequencyModInvert = funscriptAdvancedControlsState.value.frequencyModInvert,
             autoCycle = generatorState.value.autoCycle,
-            autoCycleTime = generatorState.value.autoCycleTime
+            autoCycleTime = generatorState.value.autoCycleTime,
+            powerStepSize = miscOptionsState.value.powerStepSize
         )
         database?.savedSettingsDao()?.updateSettings(settings)
     }
@@ -123,13 +134,20 @@ object DataRepository {
             channelBFrequencyBalance = settings.channelBFrequencyBalance
         ))
         setFunscriptAdvancedControlsState(FunscriptAdvancedControlsState(
-            frequencyInversion = settings.frequencyInversion,
+            frequencyInversionA = settings.frequencyInversionA,
+            frequencyInversionB = settings.frequencyInversionB,
             channelBiasFactor = settings.channelBiasFactor,
-            frequencySeparation = settings.frequencySeparation
+            frequencyModEnable = settings.frequencyModEnable,
+            frequencyModStrength = settings.frequencyModStrength,
+            frequencyModPeriod = settings.frequencyModPeriod,
+            frequencyModInvert = settings.frequencyModInvert
         ))
         setGeneratorState(generatorState.value.copy(
             autoCycle = settings.autoCycle,
             autoCycleTime = settings.autoCycleTime
+        ))
+        setMiscOptionsState(MiscOptionsState(
+            powerStepSize = settings.powerStepSize
         ))
     }
 
@@ -153,9 +171,13 @@ object DataRepository {
     )
 
     data class FunscriptAdvancedControlsState (
-        val frequencyInversion: Boolean = false,
+        val frequencyInversionA: Boolean = false,
+        val frequencyInversionB: Boolean = false,
         val channelBiasFactor: Float = 0.7f,
-        val frequencySeparation: Float = 0.1f
+        val frequencyModEnable: Boolean = false,
+        val frequencyModStrength: Float = 0.1f,
+        val frequencyModPeriod: Float = 1.0f,
+        val frequencyModInvert: Boolean = false
     )
 
     data class MainOptionsState (
@@ -164,5 +186,9 @@ object DataRepository {
         val globalMute: Boolean = false,
         val swapChannels: Boolean = false,
         val frequencyRange: ClosedFloatingPointRange<Float> = 10f..100f
+    )
+
+    data class MiscOptionsState (
+        val powerStepSize: Int = 1,
     )
 }

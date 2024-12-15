@@ -23,13 +23,19 @@ data class SavedSettings(
     val channelBFrequencyBalance: Int = 160,
     val channelAIntensityBalance: Int = 0,
     val channelBIntensityBalance: Int = 0,
-    //Funscript advanced controls
-    val frequencyInversion: Boolean = false,
+    //Player advanced controls
+    val frequencyInversionA: Boolean = false,
+    val frequencyInversionB: Boolean = false,
     val channelBiasFactor: Float = 0.7f,
-    val frequencySeparation: Float = 0.1f,
+    val frequencyModEnable: Boolean = false,
+    val frequencyModStrength: Float = 0.1f,
+    val frequencyModPeriod: Float = 1.0f,
+    val frequencyModInvert: Boolean = false,
     //Generator controls
     val autoCycle: Boolean = false,
-    val autoCycleTime: Int = 90
+    val autoCycleTime: Int = 90,
+    //Misc options
+    val powerStepSize: Int = 1
 )
 
 @Dao
@@ -44,7 +50,7 @@ interface SavedSettingsDao {
 
 @Database(
     entities = [SavedSettings::class],
-    version = 1,
+    version = 2,
     exportSchema = false
 )
 abstract class HowlDatabase : RoomDatabase() {
@@ -59,6 +65,7 @@ abstract class HowlDatabase : RoomDatabase() {
             // if the Instance is not null, return it, otherwise create a new database instance.
             return Instance ?: synchronized(this) {
                 Room.databaseBuilder(context, HowlDatabase::class.java, DB_NAME)
+                    .fallbackToDestructiveMigration()
                     .build()
                     .also { Instance = it }
             }

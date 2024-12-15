@@ -48,9 +48,47 @@ Everything Howl can play (funscripts, HWL files, generated waves) is mapped in r
 
 The "Player" tab allows you to play back different kinds of files. Currently it supports funscripts and HWL files. Your files need to be stored somewhere on your device that doesn't require any special permissions to access (I've just been using a subfolder inside "Documents" when testing).
 
+#### Player advanced options
+
+This section explains the function of all the player options.
+
+##### General settings
+
+**Invert channel A/B frequencies**
+This inverts all the frequencies played on that channel. So if it would have played the lowest frequency, it will instead play the highest frequency (and vice versa). Setting one or both of these when playing a converted audio file can be interesting, and sometimes gives a very different experience.
+
+##### Frequency modulation settings
+
+The purpose of these settings is to alter the frequency that would play a little bit, based on a periodic sine wave. This can be useful in multiple ways. It can make certain converted audio files that don't have much frequency movement (or are entirely on one frequency) a bit more interesting. Alternatively it can be used to slightly change the sensation of funscripts by just adding extra small frequency changes (tends to work best with slow/teasing type scripts - try a lower amount of movement like 0.1 and a faster wave period such as 1.0 seconds for that purpose).
+
+**Enable**
+Frequency modulation is only applied at all when this is turned on. If it's off, none of the other settings in this section will have any effect.
+
+**Channels do opposites**
+When this settings is off, the same frequency change is applied to both channels. For example if we're at a point in the sine wave where we would modulate the frequency by +5Hz, then 5Hz would be added to the channel A frequency, and the same 5Hz would be added to the channel B frequency.
+
+If this settings is on, then both channels instead do the opposite of each other. So at the same point in time as the above example, we would instead add +5Hz to the channel A frequency, and -5Hz to the channel B frequency. This gives a different sensation. I think both settings can be nice, experiment to see which you prefer.
+
+**Amount of movement**
+This controls the amplitude of the sine wave that modulates the frequency. If the frequency range spans 100Hz, then a value of 0.1 here would vary the original frequency by -10Hz to +10Hz over time.
+
+Higher values will be more noticeable, but are less accurate to the original file, as more of the frequency change is coming from the modulation wave.
+
+**Wave period (seconds)**
+This sets how fast the modulation sine wave changes. For example if this setting is 2.0 seconds, then we'll cycle though the whole frequency range set by "Amount of movement" every 2 seconds.
+
+##### Funscript settings
+
+**Positional effect strength**
+This adjusts the strength of the positional effect that Howl uses to "pan" between the electrodes when playing funscripts. At 0, the positional effect is turned off, and both electrodes always have the same power level. At 1, only channel B will trigger for funscript positions at the very top, and only channel A will trigger for positions at the very bottom.
+
+I like a value of 0.7, where the positional effect is pretty strong and you can clearly feel movement in line with the funscript, but there's still a bit of "spillover" onto the other electrode even for top/bottom positions.
+
+If only using a single channel, you'll get better results with this set to 0, as the positional effect cannot work in a single channel configuration.
+
 #### Electrode configuration for funscripts
 
-Howl uses a positional algorithm when playing back funscript files. For a good experience, you need to be using both channels. Your lower electrode should be connected on channel "A" and your higher electrode should be connected on channel "B". Exactly what or where the electrodes are isn't really important, just that "A" needs to be something you feel lower down, and "B" needs to be something you feel higher up (if you connected them the wrong way round, you can simply toggle on the channel swap control, which is the one with two opposing arrows next to the mute button).
+Howl uses a positional algorithm when playing back funscript files. For an optimal experience, you need to be using both channels. Your lower electrode should be connected on channel "A" and your higher electrode should be connected on channel "B". Exactly what or where the electrodes are isn't really important, just that "A" needs to be something you feel lower down, and "B" needs to be something you feel higher up (if you connected them the wrong way round, you can simply toggle on the channel swap control, which is the one with two opposing arrows next to the mute button).
 
 When the "stroker head" in a more traditional funscript setup would be at the top, Howl sends a stronger signal on channel B. When the head would be at the bottom, Howl sends a stronger signal on channel A. The idea is that you should feel movement from top to bottom as the "stroker" would move up and down, similar to how an audio panning effect works.
 
@@ -58,7 +96,7 @@ For this to work optimally, adjust the power on channel A and B so that you feel
 
 You also want the power across high and low frequencies to be fairly balanced, as you'll get more low frequencies sent to "A" and more high frequencies sent to "B" by default. You can use the "Frequency Balance" sliders in "Settings" for this. If the low frequencies are too strong, reduce the frequency balance. If the low frequencies are too weak, increase the frequency balance.
 
-If you want to only use a single channel, you should set "Channel bias factor" to 0 in funscript settings. But be aware that this setup can't use the positional algorithm, so you are not getting the full experience.
+If you want to only use a single channel, you should set "Positional effect strength" to 0 in funscript settings. But be aware that this setup can't use the positional algorithm, so you are not getting the full experience.
 
 #### Funscript playback tips
 
@@ -69,19 +107,6 @@ Howl always tracks time exactly in real-time from when you pressed the play butt
 Generally "action based" funscripts (where the motion of the stroker device corresponds to the actions in a video) will give the best experience.
 
 Keep in mind that funscripts are originally for physical "stroker" devices, which cannot just jump instantly from the bottom to the top like an estim device can, and will have a maximum movement speed. So even a very well written script cannot always mirror a video perfectly, because the author is working within these limitations.
-
-#### Funscript advanced options
-
-Here's what all the advanced funscript options do.
-
-##### **Channel bias factor** (recommended values 0.6 to 0.9)
-This adjusts the strength of the positional effect that Howl uses to "pan" between the electrodes. At 0, the positional effect is turned off, and both electrodes always have the same power level. At 1, only channel B will trigger for funscript positions at the very top, and only channel A will trigger for positions at the very bottom.
-
-##### **Frequency separation factor** (recommended values 0.0 to 0.3)
-This pushes the frequencies apart a little bit. Instead of playing the same frequency on both channels, channel A will be slightly lower, and channel B will be slightly higher, with how much depending on the value set. I'm not sure if this is actually particularly useful or not. I quite liked 0.1 and made that the default, but you might find setting 0 better.
-
-##### **Invert channel A frequencies** (recommended off)
-Normally the highest frequency is sent when the funscript stroker would be at the top, and the lowest frequency is sent when the funscript stroker would be at the bottom. This option reverses that for channel A, but not channel B, so instead of having similar frequencies to both channels, the channels do the reverse of each other as the stroker moves. This will probably feel less accurate to the script/video, but might well feel more pleasurable for some electrode setups, or if you are bored of the standard configuration and would like to get some high frequencies on channel A. If using this option I would suggest setting the separation factor to 0.
 
 ### Generator
 
@@ -97,7 +122,9 @@ One more interesting thing is that you can put the power or frequency values in 
 
 ### Settings
 
-The settings pane edits all the parameters that can be set on the Coyote itself, so the functionality should be the same as the equivalent settings in the DG Labs app.
+#### Coyote parameters
+
+These are all the parameters that can be set on the Coyote itself. Functionality should be exactly the same as the equivalent settings in the DG Labs app.
 
 **Channel A/B Power Limit**
 Limits the device power on that channel to the selected level.
@@ -107,6 +134,11 @@ This controls the relative strength of high and low frequencies on that channel.
 
 **Channel A/B Intensity Balance**
 This seems to be another way to adjust the low frequencies on the relevant channel. I haven't found it very useful and tend to leave it at 0. It seems to mainly affect the very lowest supported frequencies, e.g. instead of playing at 1Hz it will actually send 10Hz if you increase the intensity balance a bit. I don't think it's particularly helpful for this app, since if you don't want the very lowest frequencies, you can just adjust the main frequency range control.
+
+#### Misc options
+
+**Power control step size**
+This sets how much the power level changes by when you press the large plus/minus buttons in Howl to change the channel A or B power. The default is 1. This is a convenience setting for users who like to use high power levels, allowing them to be reached without having to press the adjustment buttons as many times.
 
 ## About HWL files and how to make them
 

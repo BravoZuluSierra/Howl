@@ -31,15 +31,23 @@ fun IntRange.toClosedFloatingPointRange(): ClosedFloatingPointRange<Float> {
 
 class CoyoteParametersViewModel() : ViewModel() {
     val coyoteParametersState: StateFlow<DGCoyote.Parameters> = DataRepository.coyoteParametersState
+    val miscOptionsState: StateFlow<DataRepository.MiscOptionsState> = DataRepository.miscOptionsState
     fun setCoyoteParametersState(newCoyoteParametersState: DGCoyote.Parameters) {
         DataRepository.setCoyoteParametersState(newCoyoteParametersState)
     }
-
+    fun setMiscOptionsState(newMiscOptionsState: DataRepository.MiscOptionsState) {
+        DataRepository.setMiscOptionsState(newMiscOptionsState)
+    }
     fun syncParameters() {
         viewModelScope.launch {
             DataRepository.saveSettings()
         }
         DGCoyote.sendParameters(DataRepository.coyoteParametersState.value)
+    }
+    fun saveSettings() {
+        viewModelScope.launch {
+            DataRepository.saveSettings()
+        }
     }
 }
 
@@ -49,12 +57,21 @@ fun CoyoteParametersPanel(
     modifier: Modifier = Modifier
 ) {
     val parametersState by viewModel.coyoteParametersState.collectAsStateWithLifecycle()
+    val miscOptionsState by viewModel.miscOptionsState.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
             .padding(16.dp)
             .fillMaxWidth(),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Coyote parameters", style = MaterialTheme.typography.headlineSmall)
+        }
+
         SliderWithLabel(
             label = "Channel A Power Limit",
             value = parametersState.channelALimit.toFloat(),
@@ -112,6 +129,24 @@ fun CoyoteParametersPanel(
             onValueChangeFinished = { viewModel.syncParameters() },
             valueRange = DGCoyote.INTENSITY_BALANCE_RANGE.toClosedFloatingPointRange(),
             steps = DGCoyote.INTENSITY_BALANCE_RANGE.endInclusive - 1,
+            valueDisplay = { it.roundToInt().toString() }
+        )
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Misc options", style = MaterialTheme.typography.headlineSmall)
+        }
+        val POWER_STEP_RANGE: IntRange = 1..10
+        SliderWithLabel(
+            label = "Power control step size",
+            value = miscOptionsState.powerStepSize.toFloat(),
+            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerStepSize = it.roundToInt())) },
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = POWER_STEP_RANGE.toClosedFloatingPointRange(),
+            steps = POWER_STEP_RANGE.endInclusive - 1,
             valueDisplay = { it.roundToInt().toString() }
         )
     }

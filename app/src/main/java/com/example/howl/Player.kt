@@ -44,6 +44,8 @@ import kotlinx.coroutines.launch
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource.Monotonic.markNow
 import java.util.Locale
+import kotlin.math.min
+import kotlin.math.sin
 
 fun formatTime(position: Double): String {
     val minutes = (position / 60).toInt()
@@ -61,8 +63,35 @@ object Player {
     fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.FunscriptAdvancedControlsState) {
         DataRepository.setFunscriptAdvancedControlsState(newAdvancedControlsState)
     }
+    fun calculateFrequencyShift(time: Double, originalFrequency: Float, period: Float, amplitude: Float, inverse: Boolean): Float {
+        val freqModTime = (time % period) / period
+        val freqModSine = sin(Math.PI * 2.0 * freqModTime)
+        val freqAmp = if (inverse)
+            if (freqModSine > 0) min(amplitude, originalFrequency) else min(amplitude, (1.0f - originalFrequency))
+        else
+            if (freqModSine > 0) min(amplitude, (1.0f - originalFrequency)) else min(amplitude, originalFrequency)
+        val freqMod = freqModSine * freqAmp
+        val newFreq = if (inverse) originalFrequency - freqMod else originalFrequency + freqMod
+        return newFreq.toFloat().coerceIn(0.0f..1.0f)
+    }
+    fun applyPostProcessing(time: Double, pulse: Pulse): Pulse {
+        val advancedControlState = DataRepository.funscriptAdvancedControlsState.value
+        var newFreqA = pulse.freqA
+        var newFreqB = pulse.freqB
+        var newAmpA = pulse.ampA
+        var newAmpB = pulse.ampB
+        if (advancedControlState.frequencyInversionA)
+            newFreqA = 1 - pulse.freqA
+        if (advancedControlState.frequencyInversionB)
+            newFreqB = 1 - pulse.freqB
+        if (advancedControlState.frequencyModEnable) {
+            newFreqA = calculateFrequencyShift(time = time, originalFrequency = newFreqA, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = advancedControlState.frequencyModInvert)
+            newFreqB = calculateFrequencyShift(time = time, originalFrequency = newFreqB, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = false)
+        }
+        return(Pulse(ampA = newAmpA, ampB = newAmpB, freqA = newFreqA, freqB = newFreqB))
+    }
     fun getPulseAtTime(time: Double): Pulse {
-        return reader.getPulseAtTime(time)
+        return applyPostProcessing(time = time, pulse = reader.getPulseAtTime(time))
     }
     fun stopPlayer() {
         updatePlayerState(DataRepository.funscriptPlayerState.value.copy(isPlaying = false))
@@ -151,26 +180,8 @@ fun AdvancedControlsPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Text(text = "Funscript settings", style = MaterialTheme.typography.headlineSmall)
+            Text(text = "General settings", style = MaterialTheme.typography.headlineSmall)
         }
-        SliderWithLabel(
-            label = "Channel bias factor",
-            value = advancedControlsState.channelBiasFactor,
-            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(channelBiasFactor = it))},
-            onValueChangeFinished = { viewModel.saveSettings() },
-            valueRange = 0f..1.0f,
-            steps = 99,
-            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
-        )
-        SliderWithLabel(
-            label = "Frequency separation factor",
-            value = advancedControlsState.frequencySeparation,
-            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(frequencySeparation = it))},
-            onValueChangeFinished = { viewModel.saveSettings() },
-            valueRange = 0f..1.0f,
-            steps = 99,
-            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
-        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -178,17 +189,112 @@ fun AdvancedControlsPanel(
         ) {
             Text(text = "Invert channel A frequencies", style = MaterialTheme.typography.labelLarge)
             Switch(
-                checked = advancedControlsState.frequencyInversion,
+                checked = advancedControlsState.frequencyInversionA,
                 onCheckedChange = {
                     viewModel.updateAdvancedControlsState(
                         advancedControlsState.copy(
-                            frequencyInversion = it
+                            frequencyInversionA = it
                         )
                     )
                     viewModel.saveSettings()
                 }
             )
         }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Invert channel B frequencies", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = advancedControlsState.frequencyInversionB,
+                onCheckedChange = {
+                    viewModel.updateAdvancedControlsState(
+                        advancedControlsState.copy(
+                            frequencyInversionB = it
+                        )
+                    )
+                    viewModel.saveSettings()
+                }
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Frequency modulation", style = MaterialTheme.typography.headlineSmall)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Enable", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = advancedControlsState.frequencyModEnable,
+                onCheckedChange = {
+                    viewModel.updateAdvancedControlsState(
+                        advancedControlsState.copy(
+                            frequencyModEnable = it
+                        )
+                    )
+                    viewModel.saveSettings()
+                }
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Channels do opposites", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = advancedControlsState.frequencyModInvert,
+                onCheckedChange = {
+                    viewModel.updateAdvancedControlsState(
+                        advancedControlsState.copy(
+                            frequencyModInvert = it
+                        )
+                    )
+                    viewModel.saveSettings()
+                }
+            )
+        }
+        SliderWithLabel(
+            label = "Amount of movement",
+            value = advancedControlsState.frequencyModStrength,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(frequencyModStrength = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0.01f..0.5f,
+            steps = 48,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
+        SliderWithLabel(
+            label = "Wave period (seconds)",
+            value = advancedControlsState.frequencyModPeriod,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(frequencyModPeriod = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0.5f..5.0f,
+            steps = 44,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Funscript settings", style = MaterialTheme.typography.headlineSmall)
+        }
+        SliderWithLabel(
+            label = "Positional effect strength",
+            value = advancedControlsState.channelBiasFactor,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(channelBiasFactor = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0f..1.0f,
+            steps = 99,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
     }
 }
 

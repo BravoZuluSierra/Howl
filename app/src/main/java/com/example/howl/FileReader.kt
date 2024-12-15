@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import android.os.ParcelFileDescriptor
 import android.provider.OpenableColumns
+import android.util.Log
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
@@ -11,7 +12,9 @@ import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.util.TreeMap
 import kotlin.math.abs
+import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.sin
 import kotlin.math.sqrt
 
 class BadFileException (message: String) : Exception(message)
@@ -72,12 +75,14 @@ class HWLReader: FileReader() {
                 throw BadFileException("Invalid HWL file: expected header not found.")
             }
 
-            // Read the rest of the file into our pulseData list
-            val buffer = ByteBuffer.allocate(16)
+            val bytes = inputStream.readBytes()
+            val buffer = ByteBuffer.wrap(bytes)
             buffer.order(ByteOrder.LITTLE_ENDIAN)
 
-            while (inputStream.read(buffer.array()) == 16) {
-                buffer.rewind()
+            while (buffer.hasRemaining()) {
+                if (buffer.remaining() < 16) {
+                    throw BadFileException("Invalid HWL file: incomplete Pulse data.")
+                }
                 val ampA = buffer.float
                 val ampB = buffer.float
                 val freqA = buffer.float
@@ -140,8 +145,6 @@ class FunscriptReader: FileReader() {
         val movingThreshold = 0.01
         val advancedControlState = DataRepository.funscriptAdvancedControlsState.value
         val channelBiasFactor = advancedControlState.channelBiasFactor
-        val freqSep = advancedControlState.frequencySeparation
-        val freqInversion = advancedControlState.frequencyInversion
 
         var (position, velocity) = getPositionAndVelocityAtTime(time)
 
@@ -172,17 +175,9 @@ class FunscriptReader: FileReader() {
         val amplitudeA = rawAmplitudeA * normalisationFactor * amplitude
         val amplitudeB = rawAmplitudeB * normalisationFactor * amplitude
 
-        // Both frequencies are by default just the position mapped into the frequency range, so the
-        // top "stroker head" position corresponds to the maximum frequency. If freqInversion is set then
-        // frequencyA is the opposite of frequencyB instead of them being the same.
-        // freqSep separates the frequencies by some amount instead of them being the same.
-        // e.g. freqSep=0.1 lowers frequencyA a bit and raises frequencyB a bit such that they are
-        // about 10% apart
-        val positionA = if (freqInversion) 1 - position else position
-        val frequencyA = positionA - freqSep * positionA
-        val frequencyB = position + freqSep * (1 - position)
-
-        return Pulse(freqA = frequencyA.toFloat(), freqB = frequencyB.toFloat(), ampA = amplitudeA.toFloat(), ampB = amplitudeB.toFloat())
+        // The frequencies used are simply based on the the position, so the top "stroker head" position
+        // corresponds to the maximum frequency. This can be further modulated or inverted by the player settings.
+        return Pulse(freqA = position.toFloat(), freqB = position.toFloat(), ampA = amplitudeA.toFloat(), ampB = amplitudeB.toFloat())
     }
 
     override fun open(uri: Uri, context: Context): Double {
