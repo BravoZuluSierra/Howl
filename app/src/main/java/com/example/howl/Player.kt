@@ -39,13 +39,22 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.howl.ui.theme.HowlTheme
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource.Monotonic.markNow
 import java.util.Locale
 import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
+import kotlinx.coroutines.isActive
+import kotlin.math.max
+import kotlin.time.toDuration
 
 fun formatTime(position: Double): String {
     val minutes = (position / 60).toInt()
@@ -53,15 +62,33 @@ fun formatTime(position: Double): String {
     return String.format(Locale.US, "%02d:%04.1f", minutes, seconds)
 }
 
-object Player {
-    var reader: FileReader = FileReader()
-    var shouldLoop: Boolean = false
+interface PulseSource {
+    val displayName: String
+    val duration: Double?
+    val isFinite: Boolean
+    val shouldLoop: Boolean
+    val readyToPlay: Boolean
+    fun getPulseAtTime(time: Double): Pulse
+    fun updateState(currentTime: Double)
+}
 
-    fun updatePlayerState(newPlayerState: DataRepository.FunscriptPlayerState) {
-        DataRepository.setFunscriptPlayerState(newPlayerState)
+object Player {
+    private val playerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var playerLoopJob: Job? = null
+    fun getNextTimes(time: Double): List<Double> {
+        val times: List<Double> = listOf(
+            time,
+            time + DGCoyote.PULSE_TIME,
+            time + DGCoyote.PULSE_TIME * 2.0,
+            time + DGCoyote.PULSE_TIME * 3.0
+        )
+        return times
     }
-    fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.FunscriptAdvancedControlsState) {
-        DataRepository.setFunscriptAdvancedControlsState(newAdvancedControlsState)
+    fun updatePlayerState(newPlayerState: DataRepository.PlayerState) {
+        DataRepository.setPlayerState(newPlayerState)
+    }
+    fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.PlayerAdvancedControlsState) {
+        DataRepository.setPlayerAdvancedControlsState(newAdvancedControlsState)
     }
     fun calculateFrequencyShift(time: Double, originalFrequency: Float, period: Float, amplitude: Float, inverse: Boolean): Float {
         val freqModTime = (time % period) / period
@@ -75,7 +102,8 @@ object Player {
         return newFreq.toFloat().coerceIn(0.0f..1.0f)
     }
     fun applyPostProcessing(time: Double, pulse: Pulse): Pulse {
-        val advancedControlState = DataRepository.funscriptAdvancedControlsState.value
+        val advancedControlState = DataRepository.playerAdvancedControlsState.value
+        val developerOptionsState = DataRepository.developerOptionsState.value
         var newFreqA = pulse.freqA
         var newFreqB = pulse.freqB
         var newAmpA = pulse.ampA
@@ -88,69 +116,149 @@ object Player {
             newFreqA = calculateFrequencyShift(time = time, originalFrequency = newFreqA, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = advancedControlState.frequencyModInvert)
             newFreqB = calculateFrequencyShift(time = time, originalFrequency = newFreqB, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = false)
         }
+        if (showDeveloperOptions) {
+            newAmpA =
+                (newAmpA.pow(developerOptionsState.developerAmplitudeExponent) * developerOptionsState.developerAmplitudeGain).coerceIn(0f, 1f)
+            newAmpB =
+                (newAmpB.pow(developerOptionsState.developerAmplitudeExponent) * developerOptionsState.developerAmplitudeGain).coerceIn(0f, 1f)
+            newFreqA =
+                (newFreqA.pow(developerOptionsState.developerFrequencyExponent) * developerOptionsState.developerFrequencyGain).coerceIn(0f, 1f)
+            newFreqB =
+                (newFreqB.pow(developerOptionsState.developerFrequencyExponent) * developerOptionsState.developerFrequencyGain).coerceIn(0f, 1f)
+            newFreqA = (newFreqA + developerOptionsState.developerFrequencyAdjustA).coerceIn(0f, 1f)
+            newFreqB = (newFreqB + developerOptionsState.developerFrequencyAdjustB).coerceIn(0f, 1f)
+        }
+
         return(Pulse(ampA = newAmpA, ampB = newAmpB, freqA = newFreqA, freqB = newFreqB))
     }
     fun getPulseAtTime(time: Double): Pulse {
-        return applyPostProcessing(time = time, pulse = reader.getPulseAtTime(time))
+        val activePulseSource = DataRepository.playerState.value.activePulseSource
+        val pulse = activePulseSource?.getPulseAtTime(time) ?: Pulse()
+        return applyPostProcessing(time, pulse)
     }
     fun stopPlayer() {
-        updatePlayerState(DataRepository.funscriptPlayerState.value.copy(isPlaying = false))
+        playerLoopJob?.cancel()
+        updatePlayerState(DataRepository.playerState.value.copy(isPlaying = false))
     }
-    fun startPlayer(from: Double = 0.0) {
-        if(!reader.readyToPlay)
+    fun startPlayer(from: Double? = null) {
+        val playerState = DataRepository.playerState.value
+        val playFrom = from ?: playerState.currentPosition
+        if(playerState.activePulseSource?.readyToPlay != true)
             return
-        updatePlayerState(DataRepository.funscriptPlayerState.value.copy(isPlaying = true, startTime = markNow(), startPosition = from))
+        updatePlayerState(playerState.copy(isPlaying = true, startTime = markNow(), startPosition = playFrom))
+
+        playerLoopJob?.cancel()
+        playerLoopJob = playerScope.launch {
+            while (isActive) {
+                val startTime = System.nanoTime()
+                val playerState = DataRepository.playerState.value
+                if (!playerState.isPlaying) break
+
+                val currentSource = playerState.activePulseSource
+                val currentPosition = getCurrentPosition()
+
+                if (currentSource == null) {
+                    stopPlayer()
+                    continue
+                }
+
+                if (currentSource.duration != null && currentSource.duration!! > 0) {
+                    if (currentPosition > currentSource.duration!!) {
+                        if (currentSource.shouldLoop) {
+                            startPlayer(0.0)
+                        }
+                        else
+                            stopPlayer()
+                        continue
+                    }
+                }
+
+                val mainOptionsState = DataRepository.mainOptionsState.value
+                val connected = DataRepository.coyoteConnectionStatus.value == ConnectionStatus.Connected
+                val swapChannels = mainOptionsState.swapChannels
+                val chartVisible = mainOptionsState.pulseChartMode != PulseChartMode.Off
+
+                val times = getNextTimes(currentPosition)
+                val pulses = times.map { getPulseAtTime(it) }
+
+                if (connected && !mainOptionsState.globalMute) {
+                    DGCoyote.sendPulse(
+                        mainOptionsState.channelAPower,
+                        mainOptionsState.channelBPower,
+                        mainOptionsState.frequencyRange.start,
+                        mainOptionsState.frequencyRange.endInclusive,
+                        swapChannels,
+                        pulses
+                    )
+                }
+
+                if (chartVisible) DataRepository.addPulsesToHistory(pulses)
+
+                val nextPosition = currentPosition + DGCoyote.PULSE_TIME * 4.0
+                DataRepository.setPlayerPosition(nextPosition)
+                currentSource.updateState(nextPosition)
+
+                val elapsed = System.nanoTime() - startTime
+                val delayNanos = max(100_000_000L - elapsed, 90_000_000L)
+                delay(delayNanos.toDuration(DurationUnit.NANOSECONDS))
+            }
+        }
     }
     fun loadFile(uri: Uri, context: Context) {
+        DataRepository.setPlayerPosition(0.0)
         try {
-            reader = HWLReader()
-            val length = reader.open(uri, context)
-            shouldLoop = true
-            updatePlayerState(DataRepository.FunscriptPlayerState(filename = reader.filename, fileLength = length))
+            val pulseSource = HWLPulseSource()
+            pulseSource.open(uri, context)
+            switchPulseSource(pulseSource)
             return
         }
         catch (_: BadFileException) { }
         try {
-            reader = FunscriptReader()
-            val length = reader.open(uri, context)
-            shouldLoop = false
-            updatePlayerState(DataRepository.FunscriptPlayerState(filename = reader.filename, fileLength = length))
+            val pulseSource = FunscriptPulseSource()
+            pulseSource.open(uri, context)
+            switchPulseSource(pulseSource)
             return
         }
         catch (_: BadFileException) { }
-        reader = FileReader()
-        updatePlayerState(DataRepository.FunscriptPlayerState(filename = reader.filename, fileLength = 0.0))
+        switchPulseSource(null)
+    }
+    fun switchPulseSource(source: PulseSource?) {
+        val playerState = DataRepository.playerState.value
+        if (source == null || playerState.activePulseSource != source) {
+            updatePlayerState(DataRepository.PlayerState())
+            DataRepository.setPlayerPulseSource(source)
+        }
     }
     fun getCurrentPosition(): Double {
-        val playerState = DataRepository.funscriptPlayerState.value
+        val playerState = DataRepository.playerState.value
         return playerState.startPosition + playerState.startTime!!.elapsedNow()
             .toDouble(
                 DurationUnit.SECONDS
             )
     }
     fun setCurrentPosition(position: Double) {
-        DataRepository.setFunscriptPlayerPosition(position)
+        DataRepository.setPlayerPosition(position)
     }
 }
 
 class PlayerViewModel() : ViewModel() {
-    val playerState: StateFlow<DataRepository.FunscriptPlayerState> = DataRepository.funscriptPlayerState
-    val advancedControlsState: StateFlow<DataRepository.FunscriptAdvancedControlsState> =
-        DataRepository.funscriptAdvancedControlsState
+    val playerState: StateFlow<DataRepository.PlayerState> = DataRepository.playerState
+    val advancedControlsState: StateFlow<DataRepository.PlayerAdvancedControlsState> =
+        DataRepository.playerAdvancedControlsState
 
-    fun updatePlayerState(newPlayerState: DataRepository.FunscriptPlayerState) {
-        DataRepository.setFunscriptPlayerState(newPlayerState)
+    fun updatePlayerState(newPlayerState: DataRepository.PlayerState) {
+        DataRepository.setPlayerState(newPlayerState)
     }
 
-    fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.FunscriptAdvancedControlsState) {
-        DataRepository.setFunscriptAdvancedControlsState(newAdvancedControlsState)
+    fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.PlayerAdvancedControlsState) {
+        DataRepository.setPlayerAdvancedControlsState(newAdvancedControlsState)
     }
 
     fun stopPlayer() {
         Player.stopPlayer()
     }
 
-    fun startPlayer(from: Double = 0.0) {
+    fun startPlayer(from: Double? = null) {
         Player.startPlayer(from)
     }
 
@@ -218,7 +326,7 @@ fun AdvancedControlsPanel(
                 }
             )
         }
-        Row(
+        /*Row(
             modifier = Modifier.fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
@@ -278,7 +386,7 @@ fun AdvancedControlsPanel(
             valueRange = 0.5f..5.0f,
             steps = 44,
             valueDisplay = { String.format(Locale.US, "%03.2f", it) }
-        )
+        )*/
         Row(
             modifier = Modifier.fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -287,9 +395,36 @@ fun AdvancedControlsPanel(
             Text(text = "Funscript settings", style = MaterialTheme.typography.headlineSmall)
         }
         SliderWithLabel(
+            label = "Volume (versus dynamic range)",
+            value = advancedControlsState.funscriptVolume,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(funscriptVolume = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0f..1.0f,
+            steps = 99,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
+        SliderWithLabel(
             label = "Positional effect strength",
-            value = advancedControlsState.channelBiasFactor,
-            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(channelBiasFactor = it))},
+            value = advancedControlsState.funscriptPositionalEffectStrength,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(funscriptPositionalEffectStrength = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0f..1.0f,
+            steps = 99,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
+        SliderWithLabel(
+            label = "Feel adjustment",
+            value = advancedControlsState.funscriptFeel,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(funscriptFeel = it))},
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0.5f..2.0f,
+            steps = 149,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
+        SliderWithLabel(
+            label = "A/B frequency time offset",
+            value = advancedControlsState.funscriptFrequencyTimeOffset,
+            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(funscriptFrequencyTimeOffset = it))},
             onValueChangeFinished = { viewModel.saveSettings() },
             valueRange = 0f..1.0f,
             steps = 99,
@@ -322,10 +457,9 @@ fun PlayerPanel(
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         // File Name Display
-        if(playerState.filename != null)
-            Text(text = "${playerState.filename}", maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
-        else
-            Text(text = "Funscript/HWL player", style = MaterialTheme.typography.labelLarge)
+        val displayName = playerState.activePulseSource?.displayName ?: "Player"
+        val duration = playerState.activePulseSource?.duration ?: 0.0
+        Text(text = displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, style = MaterialTheme.typography.labelLarge)
 
         Row(
             modifier = Modifier.fillMaxWidth()
@@ -342,7 +476,7 @@ fun PlayerPanel(
                 onValueChange = { newValue ->
                     viewModel.updatePlayerState(playerState.copy(currentPosition = newValue.toDouble()))
                 },
-                valueRange = 0f..playerState.fileLength.toFloat(),
+                valueRange = 0f..duration.toFloat(),
                 onValueChangeFinished = { }
             )
         }
@@ -357,7 +491,7 @@ fun PlayerPanel(
                     if (playerState.isPlaying)
                         viewModel.stopPlayer()
                     else
-                        viewModel.startPlayer(playerState.currentPosition)
+                        viewModel.startPlayer()
                 }
             ) {
                 if (playerState.isPlaying) {

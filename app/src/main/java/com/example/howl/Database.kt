@@ -26,16 +26,25 @@ data class SavedSettings(
     //Player advanced controls
     val frequencyInversionA: Boolean = false,
     val frequencyInversionB: Boolean = false,
-    val channelBiasFactor: Float = 0.7f,
     val frequencyModEnable: Boolean = false,
     val frequencyModStrength: Float = 0.1f,
     val frequencyModPeriod: Float = 1.0f,
     val frequencyModInvert: Boolean = false,
+    var funscriptVolume: Float = 0.5f,
+    val funscriptPositionalEffectStrength: Float = 1.0f,
+    var funscriptFeel: Float = 1.0f,
+    var funscriptFrequencyTimeOffset: Float = 0.1f,
     //Generator controls
-    val autoCycle: Boolean = false,
-    val autoCycleTime: Int = 90,
+    val autoChange: Boolean = true,
+    val speedChangeProbability: Double = 0.2,
+    val amplitudeChangeProbability: Double = 0.2,
+    val frequencyChangeProbability: Double = 0.2,
+    val waveChangeProbability: Double = 0.2,
+    //Activity settings
+    val activityChangeProbability: Float = 0.0f,
     //Misc options
-    val powerStepSize: Int = 1
+    val powerStepSizeA: Int = 1,
+    val powerStepSizeB: Int = 1
 )
 
 @Dao
@@ -50,7 +59,7 @@ interface SavedSettingsDao {
 
 @Database(
     entities = [SavedSettings::class],
-    version = 2,
+    version = 3,
     exportSchema = false
 )
 abstract class HowlDatabase : RoomDatabase() {

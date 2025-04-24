@@ -24,6 +24,13 @@ import android.bluetooth.BluetoothGattDescriptor
 import android.bluetooth.BluetoothGattService
 import android.os.Build
 import androidx.annotation.RequiresPermission
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
 // Simplified connection status for the main app
@@ -39,7 +46,6 @@ enum class ConnectionStage {
     ScanForDevice,
     ConnectToDevice,
     ServiceDiscovery,
-    RegisterForBatteryUpdates,
     RegisterForStatusUpdates,
     SyncParameters,
     Connected
@@ -61,6 +67,11 @@ object DGCoyote {
     val FREQUENCY_BALANCE_RANGE: IntRange = 0..255
     val INTENSITY_BALANCE_RANGE: IntRange = 0..255
     const val PULSE_TIME = 0.025
+    //battery polling can fail if it's too close to other Bluetooth activity like sending pulses
+    //the unusual interval helps to avoid this happening multiple times in a row
+    private const val BATTERY_POLL_INTERVAL_SECS = 60.02
+    private val coyoteScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private var batteryPollJob: Job? = null
 
     data class Parameters (
         val channelALimit: Int = 70,
@@ -99,7 +110,8 @@ object DGCoyote {
     val ALL_BLE_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
             Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN
+            Manifest.permission.BLUETOOTH_SCAN,
+            Manifest.permission.ACCESS_FINE_LOCATION
         )
     }
     else {
@@ -130,9 +142,6 @@ object DGCoyote {
             ConnectionStage.ServiceDiscovery -> {
                 gatt?.discoverServices()
             }
-            ConnectionStage.RegisterForBatteryUpdates -> {
-                batterySubscribe()
-            }
             ConnectionStage.RegisterForStatusUpdates -> {
                 statusSubscribe()
             }
@@ -140,6 +149,7 @@ object DGCoyote {
                 sendParameters(initialParameters)
             }
             ConnectionStage.Connected -> {
+                startBatteryPolling()
                 onConnectionStatusUpdate?.invoke(ConnectionStatus.Connected)
             }
         }
@@ -185,7 +195,12 @@ object DGCoyote {
         return(calculated.roundToInt().coerceIn(INTERNAL_FREQUENCY_RANGE))
     }
 
-    private fun pulseDataToByteArray(minFrequency: Float, maxFrequency: Float, swapChannels: Boolean, pulseData: List<Pulse>): ByteArray {
+    private fun pulseDataToByteArray(
+        minFrequency: Float,
+        maxFrequency: Float,
+        swapChannels: Boolean,
+        pulseData: List<Pulse>
+    ): ByteArray {
         val frequencyRange = maxFrequency - minFrequency
         //convert our internal frequencies (0 to 1) to a value in Hz and then the nearest Coyote value
         val channelAConvertedFrequencies = pulseData.map {
@@ -203,7 +218,13 @@ object DGCoyote {
     }
 
     @SuppressLint("MissingPermission")
-    fun sendPulse(channelAStrength: Int, channelBStrength: Int, minFrequency: Float, maxFrequency: Float, swapChannels: Boolean, pulseData: List<Pulse>) {
+    fun sendPulse(channelAStrength: Int,
+                  channelBStrength: Int,
+                  minFrequency: Float,
+                  maxFrequency: Float,
+                  swapChannels: Boolean,
+                  pulseData: List<Pulse>
+    ) {
         val expectedParameters = 4
         var strengthByte = 0x00.toByte()
         if(pulseData.size != expectedParameters) {
@@ -231,6 +252,30 @@ object DGCoyote {
     @SuppressLint("MissingPermission")
     fun sendParameters(parameters: Parameters) {
         sendBFCommand(parameters)
+    }
+
+    @SuppressLint("MissingPermission")
+    fun pollBatteryLevel() {
+        Log.d("DGCoyote","Polling battery level")
+        val service = gatt?.getService(batteryServiceUUID)
+        val characteristic = service?.getCharacteristic(batteryCharacteristicUUID)
+        if (characteristic != null) {
+            val success = gatt?.readCharacteristic(characteristic)
+            //Log.v("bluetooth", "pollBatteryLevel read status: $success")
+        }
+    }
+
+    private fun startBatteryPolling() {
+        batteryPollJob?.cancel() // Cancel existing job if any
+        batteryPollJob = coyoteScope.launch {
+            // Initial poll immediately
+            pollBatteryLevel()
+            // Subsequent polls at intervals
+            while (isActive) {
+                delay((BATTERY_POLL_INTERVAL_SECS * 1000).toLong())
+                pollBatteryLevel()
+            }
+        }
     }
 
     @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
@@ -267,15 +312,6 @@ object DGCoyote {
     }
 
     @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
-    private fun batterySubscribe() {
-        val batteryService = gatt?.getService(batteryServiceUUID)
-        val batteryCharacteristic = batteryService?.getCharacteristic(batteryCharacteristicUUID)
-        if (batteryCharacteristic != null) {
-            characteristicSubscribe(batteryCharacteristic)
-        }
-    }
-
-    @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
     private fun statusSubscribe() {
         val statusService = gatt?.getService(mainServiceUUID)
         val statusCharacteristic = statusService?.getCharacteristic(notifyCharacteristicUUID)
@@ -305,7 +341,7 @@ object DGCoyote {
             Log.d("DGCoyote", "Bluetooth services discovered")
             services = gatt.services
             //gatt.printGattTable()
-            currentConnectionStage = ConnectionStage.RegisterForBatteryUpdates
+            currentConnectionStage = ConnectionStage.RegisterForStatusUpdates
             runConnectionProcess()
         }
 
@@ -318,12 +354,7 @@ object DGCoyote {
             super.onDescriptorWrite(gatt, descriptor, status)
 
             if (status == BluetoothGatt.GATT_SUCCESS) {
-                if (descriptor.characteristic.uuid == batteryCharacteristicUUID) {
-                    //successfully registered for battery updates
-                    currentConnectionStage = ConnectionStage.RegisterForStatusUpdates
-                    runConnectionProcess()
-                }
-                else if (descriptor.characteristic.uuid == notifyCharacteristicUUID) {
+                if (descriptor.characteristic.uuid == notifyCharacteristicUUID) {
                     //successfully registered for status updates
                     currentConnectionStage = ConnectionStage.SyncParameters
                     runConnectionProcess()
@@ -368,18 +399,26 @@ object DGCoyote {
             }
         }
 
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt,
+            characteristic: BluetoothGattCharacteristic,
+            status: Int
+        ) {
+            super.onCharacteristicRead(gatt, characteristic, status)
+            if (characteristic.uuid == batteryCharacteristicUUID) {
+                //Log.v("DGCoyote", "Hex data for battery level ${characteristic.value.toHexString()}")
+                val batteryLevel = characteristic.value.first().toInt()
+                Log.v("DGCoyote", "Fetched Coyote battery level: $batteryLevel%")
+                onBatteryLevelUpdate?.invoke(batteryLevel)
+            }
+        }
+
         override fun onCharacteristicChanged(
             gatt: BluetoothGatt?,
             characteristic: BluetoothGattCharacteristic
         ) {
             super.onCharacteristicChanged(gatt, characteristic)
-            if (characteristic.uuid == batteryCharacteristicUUID)
-            {
-                val batteryLevel = characteristic.value.first().toInt()
-                //Log.v("DGCoyote", "Coyote battery level: $batteryLevel%")
-                onBatteryLevelUpdate?.invoke(batteryLevel)
-            }
-            else if (characteristic.uuid == notifyCharacteristicUUID)
+            if (characteristic.uuid == notifyCharacteristicUUID)
             {
                 if (characteristic.value.isEmpty())
                     return
@@ -508,6 +547,8 @@ object DGCoyote {
         bluetoothDevice = null
         previousChannelAStrength = 0
         previousChannelBStrength = 0
+        batteryPollJob?.cancel()
+        batteryPollJob = null
         currentConnectionStage = ConnectionStage.Disconnected
         onConnectionStatusUpdate?.invoke(ConnectionStatus.Disconnected)
     }

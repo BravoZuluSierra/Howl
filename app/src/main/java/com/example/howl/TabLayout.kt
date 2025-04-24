@@ -24,7 +24,7 @@ import kotlin.ranges.ClosedFloatingPointRange
 class TabLayoutViewModel() : ViewModel() {
     private val _tabIndex = MutableStateFlow(0)
     val tabIndex: StateFlow<Int> = _tabIndex.asStateFlow()
-    val tabs = listOf("Player", "Generator", "Settings")
+    val tabs = listOf("Player", "Generator", "Activity", "Settings")
 
     fun setTabIndex(index: Int) {
         _tabIndex.update { index }
@@ -39,6 +39,7 @@ fun TabLayout(
     playerViewModel: PlayerViewModel,
     coyoteParametersViewModel: CoyoteParametersViewModel,
     generatorViewModel: GeneratorViewModel,
+    activityHostViewModel: ActivityHostViewModel,
     frequencyRange: ClosedFloatingPointRange<Float>,
     modifier: Modifier = Modifier
 ) {
@@ -52,7 +53,8 @@ fun TabLayout(
                         when (index) {
                             0 -> Icon(painter = painterResource(R.drawable.player), contentDescription = null)
                             1 -> Icon(painter = painterResource(R.drawable.wave), contentDescription = null)
-                            2 -> Icon(painter = painterResource(R.drawable.settings), contentDescription = null)
+                            2 -> Icon(painter = painterResource(R.drawable.rocket), contentDescription = null)
+                            3 -> Icon(painter = painterResource(R.drawable.settings), contentDescription = null)
                         }
                     }
                 )
@@ -65,7 +67,8 @@ fun TabLayout(
                 viewModel = generatorViewModel,
                 frequencyRange = frequencyRange
             )
-            2 -> CoyoteParametersPanel(viewModel = coyoteParametersViewModel)
+            2 -> ActivityHostPanel(viewModel = activityHostViewModel)
+            3 -> CoyoteParametersPanel(viewModel = coyoteParametersViewModel)
         }
     }
 }
@@ -78,6 +81,7 @@ fun TabLayoutPreview() {
         val playerViewModel: PlayerViewModel = viewModel()
         val coyoteParametersViewModel: CoyoteParametersViewModel = viewModel()
         val generatorViewModel: GeneratorViewModel = viewModel()
+        val activityHostViewModel: ActivityHostViewModel = viewModel()
         TabLayout (
             tabIndex = 0,
             tabs = viewModel.tabs,
@@ -85,6 +89,7 @@ fun TabLayoutPreview() {
             playerViewModel = playerViewModel,
             coyoteParametersViewModel = coyoteParametersViewModel,
             generatorViewModel = generatorViewModel,
+            activityHostViewModel = activityHostViewModel,
             frequencyRange = 0f..100f,
             modifier = Modifier.fillMaxHeight()
         )

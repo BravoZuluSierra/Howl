@@ -24,19 +24,27 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.widthIn
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 fun IntRange.toClosedFloatingPointRange(): ClosedFloatingPointRange<Float> {
     return this.start.toFloat()..this.endInclusive.toFloat()
 }
 
 class CoyoteParametersViewModel() : ViewModel() {
+    val developerExponentRange: ClosedFloatingPointRange<Float> = 0.5f .. 2.0f
+    val developerGainRange: ClosedFloatingPointRange<Float> = 0.5f .. 2.0f
+    val developerFrequencyAdjustRange: ClosedFloatingPointRange<Float> = -1.0f .. 1.0f
     val coyoteParametersState: StateFlow<DGCoyote.Parameters> = DataRepository.coyoteParametersState
     val miscOptionsState: StateFlow<DataRepository.MiscOptionsState> = DataRepository.miscOptionsState
+    val developerOptionsState: StateFlow<DataRepository.DeveloperOptionsState> = DataRepository.developerOptionsState
     fun setCoyoteParametersState(newCoyoteParametersState: DGCoyote.Parameters) {
         DataRepository.setCoyoteParametersState(newCoyoteParametersState)
     }
     fun setMiscOptionsState(newMiscOptionsState: DataRepository.MiscOptionsState) {
         DataRepository.setMiscOptionsState(newMiscOptionsState)
+    }
+    fun setDeveloperOptionsState(newDeveloperOptionsState: DataRepository.DeveloperOptionsState) {
+        DataRepository.setDeveloperOptionsState(newDeveloperOptionsState)
     }
     fun syncParameters() {
         viewModelScope.launch {
@@ -58,6 +66,7 @@ fun CoyoteParametersPanel(
 ) {
     val parametersState by viewModel.coyoteParametersState.collectAsStateWithLifecycle()
     val miscOptionsState by viewModel.miscOptionsState.collectAsStateWithLifecycle()
+    val developerOptionsState by viewModel.developerOptionsState.collectAsStateWithLifecycle()
 
     Column(
         modifier = modifier
@@ -139,16 +148,88 @@ fun CoyoteParametersPanel(
         ) {
             Text(text = "Misc options", style = MaterialTheme.typography.headlineSmall)
         }
-        val POWER_STEP_RANGE: IntRange = 1..10
+        val powerStepRange: IntRange = 1..10
         SliderWithLabel(
-            label = "Power control step size",
-            value = miscOptionsState.powerStepSize.toFloat(),
-            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerStepSize = it.roundToInt())) },
+            label = "Power control step size A",
+            value = miscOptionsState.powerStepSizeA.toFloat(),
+            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerStepSizeA = it.roundToInt())) },
             onValueChangeFinished = { viewModel.saveSettings() },
-            valueRange = POWER_STEP_RANGE.toClosedFloatingPointRange(),
-            steps = POWER_STEP_RANGE.endInclusive - 1,
+            valueRange = powerStepRange.toClosedFloatingPointRange(),
+            steps = powerStepRange.endInclusive - 1,
             valueDisplay = { it.roundToInt().toString() }
         )
+        SliderWithLabel(
+            label = "Power control step size B",
+            value = miscOptionsState.powerStepSizeB.toFloat(),
+            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerStepSizeB = it.roundToInt())) },
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = powerStepRange.toClosedFloatingPointRange(),
+            steps = powerStepRange.endInclusive - 1,
+            valueDisplay = { it.roundToInt().toString() }
+        )
+        if (showDeveloperOptions) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                Text(text = "Developer options", style = MaterialTheme.typography.headlineSmall)
+            }
+            SliderWithLabel(
+                label = "Frequency exponent",
+                value = developerOptionsState.developerFrequencyExponent.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerFrequencyExponent = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerExponentRange,
+                steps = ((viewModel.developerExponentRange.endInclusive - viewModel.developerExponentRange.start) * 10.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%02.1f", it) }
+            )
+            SliderWithLabel(
+                label = "Frequency gain",
+                value = developerOptionsState.developerFrequencyGain.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerFrequencyGain = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerGainRange,
+                steps = ((viewModel.developerGainRange.endInclusive - viewModel.developerGainRange.start) * 10.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%02.1f", it) }
+            )
+            SliderWithLabel(
+                label = "Channel A frequency adjust",
+                value = developerOptionsState.developerFrequencyAdjustA.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerFrequencyAdjustA = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerFrequencyAdjustRange,
+                steps = ((viewModel.developerFrequencyAdjustRange.endInclusive - viewModel.developerFrequencyAdjustRange.start) * 20.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+            )
+            SliderWithLabel(
+                label = "Channel B frequency adjust",
+                value = developerOptionsState.developerFrequencyAdjustB.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerFrequencyAdjustB = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerFrequencyAdjustRange,
+                steps = ((viewModel.developerFrequencyAdjustRange.endInclusive - viewModel.developerFrequencyAdjustRange.start) * 20.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+            )
+            SliderWithLabel(
+                label = "Amplitude exponent",
+                value = developerOptionsState.developerAmplitudeExponent.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerAmplitudeExponent = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerExponentRange,
+                steps = ((viewModel.developerExponentRange.endInclusive - viewModel.developerExponentRange.start) * 10.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%02.1f", it) }
+            )
+            SliderWithLabel(
+                label = "Amplitude gain",
+                value = developerOptionsState.developerAmplitudeGain.toFloat(),
+                onValueChange = { viewModel.setDeveloperOptionsState(developerOptionsState.copy(developerAmplitudeGain = it)) },
+                onValueChangeFinished = { },
+                valueRange = viewModel.developerGainRange,
+                steps = ((viewModel.developerGainRange.endInclusive - viewModel.developerGainRange.start) * 10.0 - 1).roundToInt(),
+                valueDisplay = { String.format(Locale.US, "%02.1f", it) }
+            )
+        }
     }
 }
 

@@ -44,178 +44,249 @@ import com.example.howl.ui.theme.HowlTheme
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import java.util.Locale
-import kotlin.math.abs
-import kotlin.math.cos
 import kotlin.math.roundToInt
-import kotlin.math.sin
 import kotlin.random.Random
-import kotlin.time.DurationUnit
-import kotlin.time.TimeSource.Monotonic.markNow
 
-enum class WaveType(val description: String) {
-    Sine("Sine"),
-    Cosine("Cosine"),
-    Sawtooth("Sawtooth"),
-    Triangle("Triangle"),
-    Square("Square"),
-    Constant("Constant"),
-    Trapezium("Trapezium"),
-    Fangs("Fangs"),
+class GeneratorChannel(
+    val waveManager: WaveManager = WaveManager(),
+    val minFreq: SmoothedValue = SmoothedValue(0.0),
+    val maxFreq: SmoothedValue = SmoothedValue(1.0),
+    val minAmp: SmoothedValue = SmoothedValue(0.0),
+    val maxAmp: SmoothedValue = SmoothedValue(1.0),
+    var doingWaveChange: Boolean = false
+) {
+    fun getInfo(): GeneratorChannelInfo {
+        return GeneratorChannelInfo(
+            ampWaveName = waveManager.getWave("amp").name,
+            freqWaveName = waveManager.getWave("freq").name,
+            minFreq = minFreq.current,
+            maxFreq = maxFreq.current,
+            minAmp = minAmp.current,
+            maxAmp = maxAmp.current,
+            speed = waveManager.currentSpeed
+        )
+    }
+    fun update(timeDelta: Double) {
+        waveManager.update(timeDelta)
+        minFreq.update(timeDelta)
+        maxFreq.update(timeDelta)
+        minAmp.update(timeDelta)
+        maxAmp.update(timeDelta)
+    }
+    fun getAmpAndFreq(): Pair<Double, Double> {
+        val baseAmp = waveManager.getPosition("amp")
+        val baseFreq = waveManager.getPosition("freq")
+        val amp = baseAmp.scaleBetween(minAmp.current, maxAmp.current)
+        val freq = baseFreq.scaleBetween(minFreq.current, maxFreq.current)
+        return Pair(amp, freq)
+    }
+    fun appropriateSpeedRange() : ClosedFloatingPointRange<Double> {
+        val numPoints = waveManager.getWave("amp").numPoints
+        if (numPoints <= 4) {
+            return Generator.SPEED_RANGE
+        }
+        else {
+            val min = Generator.SPEED_RANGE.start
+            val max = Generator.SPEED_RANGE.endInclusive * 4.0 / numPoints
+            return min .. max
+        }
+    }
+    fun makeRandomChanges(timeDelta: Double) {
+        val state = DataRepository.generatorState.value
+        val speedChangeProbability = state.speedChangeProbability
+        val ampChangeProbability = state.amplitudeChangeProbability
+        val freqChangeProbability = state.frequencyChangeProbability
+        val waveChangeProbability = state.waveChangeProbability
+
+        val baseProbability = 10.0 //average changes per minute at 1.0 probability
+
+        val speedChange = (speedChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < speedChange) {
+            val range = appropriateSpeedRange()
+            waveManager.setTargetSpeed(randomInRange(range), randomInRange(Generator.SPEED_CHANGE_RATE_RANGE))
+        }
+
+        val minAmpChange = (ampChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < minAmpChange) {
+            minAmp.setTarget(randomInRange(Generator.MIN_AMP_RANGE), randomInRange(Generator.CHANGE_RATE_RANGE))
+        }
+
+        val maxAmpChange = (ampChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < maxAmpChange) {
+            maxAmp.setTarget(randomInRange(Generator.MAX_AMP_RANGE), randomInRange(Generator.CHANGE_RATE_RANGE))
+        }
+
+        val minFreqChange = (freqChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < minFreqChange) {
+            minFreq.setTarget(randomInRange(Generator.MIN_FREQ_RANGE), randomInRange(Generator.CHANGE_RATE_RANGE))
+        }
+
+        val maxFreqChange = (freqChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < maxFreqChange) {
+            maxFreq.setTarget(randomInRange(Generator.MAX_FREQ_RANGE), randomInRange(Generator.CHANGE_RATE_RANGE))
+        }
+
+        val waveChange = (waveChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < waveChange && doingWaveChange == false) {
+            doingWaveChange = true
+            waveManager.stopAtEndOfCycle {
+                changeAmpWave()
+                doingWaveChange = false
+            }
+        }
+
+        val freqWaveChange = (waveChangeProbability * baseProbability * timeDelta) / 60.0
+        if (Random.nextDouble() < freqWaveChange && doingWaveChange == false) {
+            doingWaveChange = true
+            waveManager.stopAtEndOfCycle {
+                changeFreqWave()
+                doingWaveChange = false
+            }
+        }
+    }
+    fun changeAmpWave() {
+        waveManager.addWave(CyclicalWave(generatorWaveShapes.random()),"amp")
+        val range = appropriateSpeedRange()
+        if (waveManager.getTargetSpeed() !in range) {
+            waveManager.setSpeed(randomInRange(range))
+        }
+        waveManager.restart()
+    }
+    fun changeFreqWave() {
+        waveManager.addWave(CyclicalWave(generatorWaveShapes.random()),"freq")
+        waveManager.restart()
+    }
+    fun randomise() {
+        minAmp.setImmediately(randomInRange(Generator.MIN_AMP_RANGE))
+        maxAmp.setImmediately(randomInRange(Generator.MAX_AMP_RANGE))
+        minFreq.setImmediately(randomInRange(Generator.MIN_FREQ_RANGE))
+        maxFreq.setImmediately(randomInRange(Generator.MAX_FREQ_RANGE))
+
+        waveManager.addWave(CyclicalWave(generatorWaveShapes.random()),"amp")
+        waveManager.addWave(CyclicalWave(generatorWaveShapes.random()),"freq")
+        waveManager.restart()
+        val range = appropriateSpeedRange()
+        waveManager.setSpeed(randomInRange(range))
+        waveManager.setSpeedVariance(0.0)
+        waveManager.setAmplitudeVariance(0.0)
+        waveManager.setSpeedVarianceEaseIn(0.0)
+        waveManager.setAmplitudeVarianceEaseIn(0.0)
+        doingWaveChange = false
+    }
+    fun setSpeed(speed: Double) {
+        waveManager.setSpeed(speed)
+    }
+    fun setAmpWave(waveShape: WaveShape) {
+        waveManager.addWave(CyclicalWave(waveShape), "amp")
+        waveManager.restart()
+    }
+    fun setFreqWave(waveShape: WaveShape) {
+        waveManager.addWave(CyclicalWave(waveShape), "freq")
+        waveManager.restart()
+    }
+    fun setMinAmp(amplitude: Double) {
+        minAmp.setImmediately(amplitude)
+    }
+    fun setMaxAmp(amplitude: Double) {
+        maxAmp.setImmediately(amplitude)
+    }
+    fun setMinFreq(frequency: Double) {
+        minFreq.setImmediately(frequency)
+    }
+    fun setMaxFreq(frequency: Double) {
+        maxFreq.setImmediately(frequency)
+    }
 }
 
-data class GeneratorParameters(
-    var waveType: WaveType = WaveType.Sine,
-    var frequencyType: WaveType = WaveType.Sine,
-    var period: Double = 1.0,
-    var frequencyHigh: Double = 0.5,
-    var frequencyLow: Double = 0.0,
-    var amplitudeHigh: Double = 0.5,
-    var amplitudeLow: Double = 0.0,
-    var timeOffset: Double = 0.0,
+class GeneratorChannelInfo(
+    val ampWaveName: String = "",
+    val freqWaveName: String = "",
+    val minFreq: Double = 0.0,
+    val maxFreq: Double = 1.0,
+    val minAmp: Double = 0.0,
+    val maxAmp: Double = 1.0,
+    val speed: Double = 1.0,
 )
 
-data class Point(
-    val time: Double,
-    val position: Double
-)
+object Generator : PulseSource {
+    val SPEED_RANGE = 0.1..2.0
+    val SPEED_CHANGE_RATE_RANGE = 0.03..0.2
+    val CHANGE_RATE_RANGE = 0.03..0.2
+    val MIN_AMP_RANGE = 0.0..0.4
+    val MAX_AMP_RANGE = 0.6..1.0
+    val MIN_FREQ_RANGE = 0.0..1.0
+    val MAX_FREQ_RANGE = 0.0..1.0
+    val channelA: GeneratorChannel = GeneratorChannel()
+    val channelB: GeneratorChannel = GeneratorChannel()
 
-object Generator {
-    val AUTO_CYCLE_TIME_RANGE: IntRange = 10..300
-    val PERIOD_RANGE: ClosedFloatingPointRange<Float> = 0.5f .. 10.0f
-    fun initialise() {
-        if(DataRepository.generatorState.value.initialised == false)
-            randomise()
-        updateGeneratorState(DataRepository.generatorState.value.copy(initialised = true))
+    override var displayName: String = "Generator output"
+    override var duration: Double? = null
+    override val isFinite: Boolean = false
+    override val shouldLoop: Boolean = false
+    override var readyToPlay: Boolean = false
+
+    private var lastSimulationTime = -1.0
+    private var lastUpdateTime = -1.0
+    private val timerManager = TimerManager()
+
+    override fun updateState(currentTime: Double) {
+        if (lastUpdateTime < 0 || lastUpdateTime > currentTime)
+            lastUpdateTime = currentTime
+        val state = DataRepository.generatorState.value
+        val timeDelta = currentTime - lastUpdateTime
+        lastUpdateTime = currentTime
+        if (state.autoChange) {
+            channelA.makeRandomChanges(timeDelta)
+            channelB.makeRandomChanges(timeDelta)
+        }
+        updateInfo()
     }
+
+    fun initialise() {
+        if(DataRepository.generatorState.value.initialised == false) {
+            channelA.randomise()
+            channelB.randomise()
+            updateInfo()
+        }
+
+        updateGeneratorState(DataRepository.generatorState.value.copy(initialised = true))
+
+        readyToPlay = true
+    }
+
     fun updateGeneratorState(newGeneratorState: DataRepository.GeneratorState) {
         DataRepository.setGeneratorState(newGeneratorState)
     }
-    fun stopGenerator() {
-        updateGeneratorState(DataRepository.generatorState.value.copy(isPlaying = false))
-    }
-    fun startGenerator() {
-        updateGeneratorState(DataRepository.generatorState.value.copy(isPlaying = true, patternStartTime = markNow()))
-    }
-    fun getCurrentTime(): Double {
-        val generatorState = DataRepository.generatorState.value
-        return generatorState.patternStartTime!!.elapsedNow().toDouble(DurationUnit.SECONDS)
-    }
-    private fun linearInterpolatePoints(time: Double, points: List<Point>) : Double {
-        val index = points.indexOfFirst { it.time > time }
-        if (index == 0)
-            return points.first().position
-        if (index == -1)
-            return points.last().position
-        val p1 = points[index - 1]
-        val p2 = points[index]
-        return linearInterpolate(time, p1, p2)
-    }
-    private fun linearInterpolate(time: Double, p1: Point, p2: Point): Double{
-        return p1.position + (p2.position - p1.position) * (time - p1.time) / (p2.time - p1.time)
-    }
-    private fun calculateWave(wave: WaveType, relativeTime: Double, min: Double, max: Double): Double {
-        val range: Double = abs(max - min)
-        val mid: Double = (min + max) / 2.0
-
-        return when (wave) {
-            WaveType.Sine -> {
-                mid + sin(Math.PI * 2.0 * relativeTime) * (range / 2.0)
-            }
-            WaveType.Cosine -> {
-                mid + cos(Math.PI * 2.0 * relativeTime) * (range / 2.0)
-            }
-            WaveType.Sawtooth -> {
-                linearInterpolate(relativeTime, Point(0.0, min), Point(1.0,max))
-            }
-            WaveType.Triangle -> {
-                linearInterpolatePoints(relativeTime, listOf(
-                    Point(0.0, min),
-                    Point(0.5, max),
-                    Point(1.0, min)))
-            }
-            WaveType.Square -> {
-                if (relativeTime < 0.5) max else min
-            }
-            WaveType.Constant -> {
-                max
-            }
-            WaveType.Trapezium -> {
-                linearInterpolatePoints(relativeTime, listOf(
-                    Point(0.0, min),
-                    Point(0.4, max),
-                    Point(0.6, max),
-                    Point(1.0, min)))
-            }
-            WaveType.Fangs -> {
-                linearInterpolatePoints(relativeTime, listOf(
-                    Point(0.0, min),
-                    Point(0.35, max),
-                    Point(0.5, mid),
-                    Point(0.65, max),
-                    Point(1.0, min)))
-            }
-        }
-    }
-    private fun generate(time: Double, generatorParameters: GeneratorParameters, debug: Boolean = false): Pair<Float, Float> {
-        val period = generatorParameters.period
-        val calcTime = time + generatorParameters.timeOffset
-        val iteration = (calcTime / period).toInt()
-        val relativeTime = (calcTime % period) / period
-
-        val frequency = calculateWave(generatorParameters.frequencyType, relativeTime, generatorParameters.frequencyLow, generatorParameters.frequencyHigh)
-        val amplitude = calculateWave(generatorParameters.waveType, relativeTime, generatorParameters.amplitudeLow, generatorParameters.amplitudeHigh)
-
-        if(debug)
-            Log.d("Generator", "T=$time Iteration=$iteration Relative time=$relativeTime Frequency=$frequency Amplitude=$amplitude")
-        return Pair(frequency.toFloat(), amplitude.toFloat())
-    }
-    fun getPulseAtTime(time: Double): Pulse {
-        val (frequencyA, amplitudeA) = generate(time, DataRepository.generatorState.value.channelAParameters)//, debug = true)
-        val (frequencyB, amplitudeB) = generate(time, DataRepository.generatorState.value.channelBParameters)
-        return Pulse(amplitudeA, amplitudeB, frequencyA, frequencyB)
-    }
-    private fun getRandomGeneratorParameters(): GeneratorParameters {
-        var period = Random.nextDouble()
-        period *= if (Random.nextBoolean()) 2.5 else 9.5
-        period += 0.5
-
-        var amp1 = Random.nextDouble() * 0.4
-        var amp2 = 0.5 + Random.nextDouble() * 0.5
-
-        if (Random.nextBoolean())
-            amp1 = amp2.also { amp2 = amp1 } //stupid Kotlin way to swap two variables
-
-        var params: GeneratorParameters = GeneratorParameters (
-            waveType = WaveType.entries.random(),
-            frequencyType = WaveType.entries.random(),
-            period = period,
-            frequencyHigh = Random.nextDouble(),
-            frequencyLow = Random.nextDouble(),
-            amplitudeLow = amp1,
-            amplitudeHigh = amp2
-        )
-
-        if (params.waveType == WaveType.Constant) {
-            params.amplitudeLow = (Random.nextDouble() * 0.5) + 0.5
-            params.amplitudeHigh = params.amplitudeLow
-        }
-        if (params.frequencyType == WaveType.Constant)
-            params.frequencyHigh = params.frequencyLow
-
-        return params
+    fun updateInfo() {
+        updateGeneratorState(DataRepository.generatorState.value.copy(
+            channelAInfo = channelA.getInfo(),
+            channelBInfo = channelB.getInfo()
+        ))
     }
     fun randomise() {
-        var channelAParameters = getRandomGeneratorParameters()
-        var channelBParameters = getRandomGeneratorParameters()
-        if (Random.nextBoolean())
-            channelBParameters.period = channelAParameters.period
-        if (Random.nextBoolean())
-            channelBParameters.timeOffset = Random.nextDouble() * (channelBParameters.period / 2.0)
+        channelA.randomise()
+        channelB.randomise()
+        updateInfo()
+    }
+    fun getChannel(channelNumber: Int): GeneratorChannel {
+        return if(channelNumber==0) channelA else channelB
+    }
 
-        updateGeneratorState(DataRepository.generatorState.value.copy(
-            channelAParameters = channelAParameters,
-            channelBParameters = channelBParameters,
-            patternStartTime = markNow()))
+    override fun getPulseAtTime(time: Double): Pulse {
+        if (lastSimulationTime < 0 || lastSimulationTime > time) {
+            lastSimulationTime = time
+        }
+
+        val simulationTimeDelta = time - lastSimulationTime
+        lastSimulationTime = time
+        timerManager.update(simulationTimeDelta)
+        channelA.update(simulationTimeDelta)
+        channelB.update(simulationTimeDelta)
+
+        val (ampA, freqA) = channelA.getAmpAndFreq()
+        val (ampB, freqB) = channelB.getAmpAndFreq()
+
+        return Pulse(ampA.toFloat(), ampB.toFloat(), freqA.toFloat(), freqB.toFloat())
     }
 }
 
@@ -224,56 +295,65 @@ class GeneratorViewModel() : ViewModel() {
     fun updateGeneratorState(newGeneratorState: DataRepository.GeneratorState) {
         DataRepository.setGeneratorState(newGeneratorState)
     }
-    private fun getGeneratorParameters(channel: Int): GeneratorParameters {
-        return if(channel == 1)
-            DataRepository.generatorState.value.channelBParameters
-        else
-            DataRepository.generatorState.value.channelAParameters
-    }
-    private fun setGeneratorParameters(channel: Int, parameters: GeneratorParameters) {
-        if(channel == 1)
-            updateGeneratorState(DataRepository.generatorState.value.copy(channelBParameters = parameters))
-        else
-            updateGeneratorState(DataRepository.generatorState.value.copy(channelAParameters = parameters))
-    }
     fun randomise() {
         Generator.randomise()
     }
     fun stopGenerator() {
-        Generator.stopGenerator()
+        Player.stopPlayer()
     }
     fun startGenerator() {
-        Generator.startGenerator()
+        Player.switchPulseSource(Generator)
+        Player.startPlayer()
     }
-    fun setAutoCycle(enabled: Boolean) {
-        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(autoCycle = enabled))
+    fun setAutoChange(enabled: Boolean) {
+        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(autoChange = enabled))
     }
-    fun setAutoCycleTime(seconds: Int) {
-        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(autoCycleTime = seconds))
+    fun setSpeedChangeProbability(probability: Double) {
+        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(speedChangeProbability = probability))
     }
-    fun setPeriod(channel: Int, period: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(period = period))
+    fun setAmplitudeChangeProbability(probability: Double) {
+        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(amplitudeChangeProbability = probability))
     }
-    fun setMinPower(channel: Int, power: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(amplitudeLow = power))
+    fun setFrequencyChangeProbability(probability: Double) {
+        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(frequencyChangeProbability = probability))
     }
-    fun setMaxPower(channel: Int, power: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(amplitudeHigh = power))
+    fun setWaveChangeProbability(probability: Double) {
+        Generator.updateGeneratorState(DataRepository.generatorState.value.copy(waveChangeProbability = probability))
     }
-    fun setMinFrequency(channel: Int, frequency: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(frequencyLow = frequency))
+
+    fun setSpeed(channel: Int, speed: Double) {
+        Generator.getChannel(channel).setSpeed(speed)
+        Generator.updateInfo()
     }
-    fun setMaxFrequency(channel: Int, frequency: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(frequencyHigh = frequency))
+    fun setAmpWave(channel: Int, waveName: String) {
+        val waveShape = generatorWaveShapes.find { it.name == waveName }
+        waveShape?.let {
+            Generator.getChannel(channel).setAmpWave(it)
+            Generator.updateInfo()
+        }
     }
-    fun setWave(channel: Int, wave: WaveType) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(waveType = wave))
+    fun setFreqWave(channel: Int, waveName: String) {
+        val waveShape = generatorWaveShapes.find { it.name == waveName }
+        waveShape?.let {
+            Generator.getChannel(channel).setFreqWave(it)
+            Generator.updateInfo()
+        }
     }
-    fun setFrequencyWave(channel: Int, wave: WaveType) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(frequencyType = wave))
+    fun setMinAmp(channel: Int, amplitude: Double) {
+        Generator.getChannel(channel).setMinAmp(amplitude)
+        Generator.updateInfo()
     }
-    fun setTimeOffset(channel: Int, seconds: Double) {
-        setGeneratorParameters(channel, getGeneratorParameters(channel).copy(timeOffset = seconds))
+    fun setMaxAmp(channel: Int, amplitude: Double) {
+        Generator.getChannel(channel).setMaxAmp(amplitude)
+        Generator.updateInfo()
+    }
+    fun setMinFreq(channel: Int, frequency: Double) {
+        Generator.getChannel(channel).setMinFreq(frequency)
+        Generator.updateInfo()
+    }
+    fun setMaxFreq(channel: Int, frequency: Double) {
+        Generator.getChannel(channel).setMaxFreq(frequency)
+        Generator.updateInfo()
     }
 
     fun saveSettings() {
@@ -290,6 +370,8 @@ fun GeneratorPanel(
     modifier: Modifier = Modifier
 ) {
     val generatorState by viewModel.generatorState.collectAsStateWithLifecycle()
+    val playerState by DataRepository.playerState.collectAsStateWithLifecycle()
+    val isPlaying = playerState.isPlaying && playerState.activePulseSource == Generator
     var showChannelASettings by remember { mutableStateOf(false) }
     var showChannelBSettings by remember { mutableStateOf(false) }
 
@@ -305,23 +387,22 @@ fun GeneratorPanel(
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            GeneratorParametersInfo("Channel A", generatorState.channelAParameters, frequencyRange, onClick = { showChannelASettings = true }, modifier=Modifier.weight(1f))
-            GeneratorParametersInfo("Channel B", generatorState.channelBParameters, frequencyRange, onClick = { showChannelBSettings = true }, modifier=Modifier.weight(1f))
+            GeneratorParametersInfo("Channel A", generatorState.channelAInfo, frequencyRange, onClick = { showChannelASettings = true }, modifier=Modifier.weight(1f))
+            GeneratorParametersInfo("Channel B", generatorState.channelBInfo, frequencyRange, onClick = { showChannelBSettings = true }, modifier=Modifier.weight(1f))
         }
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            // Play/Pause Button
             Button(
                 onClick = {
-                    if (generatorState.isPlaying)
+                    if (isPlaying)
                         viewModel.stopGenerator()
                     else
                         viewModel.startGenerator()
                 }
             ) {
-                if (generatorState.isPlaying) {
+                if (isPlaying) {
                     Icon(
                         painter = painterResource(R.drawable.pause),
                         contentDescription = "Pause"
@@ -333,7 +414,6 @@ fun GeneratorPanel(
                     )
                 }
             }
-            // Randomise button
             Button(
                 onClick = { viewModel.randomise() }
             ) {
@@ -349,24 +429,51 @@ fun GeneratorPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = "Auto cycle patterns", style = MaterialTheme.typography.labelLarge)
+            Text(text = "Automatically change parameters", style = MaterialTheme.typography.labelLarge)
             Switch(
-                checked = generatorState.autoCycle,
+                checked = generatorState.autoChange,
                 onCheckedChange = {
-                    viewModel.setAutoCycle(it)
+                    viewModel.setAutoChange(it)
                     viewModel.saveSettings()
                 }
             )
         }
-        if (generatorState.autoCycle) {
+        if (generatorState.autoChange) {
             SliderWithLabel(
-                label = "Auto cycle delay (seconds)",
-                value = generatorState.autoCycleTime.toFloat(),
-                onValueChange = { viewModel.setAutoCycleTime(it.roundToInt()) },
+                label = "Speed change probability",
+                value = generatorState.speedChangeProbability.toFloat(),
+                onValueChange = {viewModel.setSpeedChangeProbability(probability = it.toDouble())},
                 onValueChangeFinished = { viewModel.saveSettings() },
-                valueRange = Generator.AUTO_CYCLE_TIME_RANGE.toClosedFloatingPointRange(),
-                steps = (Generator.AUTO_CYCLE_TIME_RANGE.endInclusive - Generator.AUTO_CYCLE_TIME_RANGE.start) / 5 - 1,
-                valueDisplay = { String.format(Locale.US, "%02.1f", it) }
+                valueRange = 0f..1.0f,
+                steps = 99,
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+            )
+            SliderWithLabel(
+                label = "Amplitude change probability",
+                value = generatorState.amplitudeChangeProbability.toFloat(),
+                onValueChange = {viewModel.setAmplitudeChangeProbability(probability = it.toDouble())},
+                onValueChangeFinished = { viewModel.saveSettings() },
+                valueRange = 0f..1.0f,
+                steps = 99,
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+            )
+            SliderWithLabel(
+                label = "Frequency change probability",
+                value = generatorState.frequencyChangeProbability.toFloat(),
+                onValueChange = {viewModel.setFrequencyChangeProbability(probability = it.toDouble())},
+                onValueChangeFinished = { viewModel.saveSettings() },
+                valueRange = 0f..1.0f,
+                steps = 99,
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+            )
+            SliderWithLabel(
+                label = "Shape change probability",
+                value = generatorState.waveChangeProbability.toFloat(),
+                onValueChange = {viewModel.setWaveChangeProbability(probability = it.toDouble())},
+                onValueChangeFinished = { viewModel.saveSettings() },
+                valueRange = 0f..1.0f,
+                steps = 99,
+                valueDisplay = { String.format(Locale.US, "%03.2f", it) }
             )
         }
         if (showChannelASettings) {
@@ -381,13 +488,12 @@ fun GeneratorPanel(
                     GeneratorParametersSettings(
                         viewModel = viewModel,
                         channel = 0,
-                        generatorParameters = generatorState.channelAParameters,
+                        generatorChannelInfo = generatorState.channelAInfo,
                         title = "Channel A Settings"
                     )
                 }
             }
         }
-
         if (showChannelBSettings) {
             Dialog(
                 onDismissRequest = { showChannelBSettings = false }
@@ -400,7 +506,7 @@ fun GeneratorPanel(
                     GeneratorParametersSettings(
                         viewModel = viewModel,
                         channel = 1,
-                        generatorParameters = generatorState.channelBParameters,
+                        generatorChannelInfo = generatorState.channelBInfo,
                         title = "Channel B Settings"
                     )
                 }
@@ -413,7 +519,7 @@ fun GeneratorPanel(
 fun GeneratorParametersSettings(
     viewModel: GeneratorViewModel,
     channel: Int,
-    generatorParameters: GeneratorParameters,
+    generatorChannelInfo: GeneratorChannelInfo,
     title: String,
     modifier: Modifier = Modifier
 ) {
@@ -426,21 +532,12 @@ fun GeneratorParametersSettings(
             Text(text = title, style = MaterialTheme.typography.headlineSmall)
         }
         SliderWithLabel(
-            label = "Period (seconds)",
-            value = generatorParameters.period.toFloat(),
-            onValueChange = { viewModel.setPeriod(channel = channel, period = it.toDouble()) },
+            label = "Speed (repetitions/sec)",
+            value = generatorChannelInfo.speed.toFloat(),
+            onValueChange = { viewModel.setSpeed(channel = channel, speed = it.toDouble()) },
             onValueChangeFinished = { },
-            valueRange = Generator.PERIOD_RANGE,
-            steps = ((Generator.PERIOD_RANGE.endInclusive - Generator.PERIOD_RANGE.start) * 10.0 - 1).roundToInt(),
-            valueDisplay = { String.format(Locale.US, "%02.1f", it) }
-        )
-        SliderWithLabel(
-            label = "Time offset (seconds)",
-            value = generatorParameters.timeOffset.toFloat(),
-            onValueChange = { viewModel.setTimeOffset(channel = channel, seconds = it.toDouble()) },
-            onValueChangeFinished = { },
-            valueRange = 0.0f ..Generator.PERIOD_RANGE.endInclusive,
-            steps = (Generator.PERIOD_RANGE.endInclusive * 10.0 - 1).roundToInt(),
+            valueRange = Generator.SPEED_RANGE.toFloatRange,
+            steps = ((Generator.SPEED_RANGE.endInclusive - Generator.SPEED_RANGE.start) * 10.0 - 1).roundToInt(),
             valueDisplay = { String.format(Locale.US, "%02.1f", it) }
         )
         HorizontalDivider()
@@ -450,12 +547,17 @@ fun GeneratorParametersSettings(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(text = "Wave shape")
-            WaveTypePicker(generatorParameters.waveType, { viewModel.setWave(channel, it)})
+            OptionPicker(
+                currentValue = generatorChannelInfo.ampWaveName,
+                onValueChange = { viewModel.setAmpWave(channel, it) },
+                options = generatorWaveShapes.map { it.name },
+                getText = { it }
+            )
         }
         SliderWithLabel(
             label = "Start power",
-            value = generatorParameters.amplitudeLow.toFloat(),
-            onValueChange = { viewModel.setMinPower(channel = channel, power = it.toDouble()) },
+            value = generatorChannelInfo.minAmp.toFloat(),
+            onValueChange = { viewModel.setMinAmp(channel = channel, amplitude = it.toDouble()) },
             onValueChangeFinished = { },
             valueRange = 0.0f .. 1.0f,
             steps = 99,
@@ -463,8 +565,8 @@ fun GeneratorParametersSettings(
         )
         SliderWithLabel(
             label = "End power",
-            value = generatorParameters.amplitudeHigh.toFloat(),
-            onValueChange = { viewModel.setMaxPower(channel = channel, power = it.toDouble()) },
+            value = generatorChannelInfo.maxAmp.toFloat(),
+            onValueChange = { viewModel.setMaxAmp(channel = channel, amplitude = it.toDouble()) },
             onValueChangeFinished = { },
             valueRange = 0.0f .. 1.0f,
             steps = 99,
@@ -476,13 +578,18 @@ fun GeneratorParametersSettings(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Text(text = "Frequency shape")
-            WaveTypePicker(generatorParameters.frequencyType, { viewModel.setFrequencyWave(channel, it)})
+            Text(text = "Freq shape")
+            OptionPicker(
+                currentValue = generatorChannelInfo.freqWaveName,
+                onValueChange = { viewModel.setFreqWave(channel, it) },
+                options = generatorWaveShapes.map { it.name },
+                getText = { it }
+            )
         }
         SliderWithLabel(
             label = "Start frequency",
-            value = generatorParameters.frequencyLow.toFloat(),
-            onValueChange = { viewModel.setMinFrequency(channel = channel, frequency = it.toDouble()) },
+            value = generatorChannelInfo.minFreq.toFloat(),
+            onValueChange = { viewModel.setMinFreq(channel = channel, frequency = it.toDouble()) },
             onValueChangeFinished = { },
             valueRange = 0.0f .. 1.0f,
             steps = 99,
@@ -490,8 +597,8 @@ fun GeneratorParametersSettings(
         )
         SliderWithLabel(
             label = "End frequency",
-            value = generatorParameters.frequencyHigh.toFloat(),
-            onValueChange = { viewModel.setMaxFrequency(channel = channel, frequency = it.toDouble()) },
+            value = generatorChannelInfo.maxFreq.toFloat(),
+            onValueChange = { viewModel.setMaxFreq(channel = channel, frequency = it.toDouble()) },
             onValueChangeFinished = { },
             valueRange = 0.0f .. 1.0f,
             steps = 99,
@@ -503,13 +610,13 @@ fun GeneratorParametersSettings(
 @Composable
 fun GeneratorParametersInfo(
     title: String,
-    generatorParameters: GeneratorParameters,
+    generatorChannelInfo: GeneratorChannelInfo,
     frequencyRange: ClosedFloatingPointRange<Float>,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    Column (modifier=modifier.fillMaxWidth()){
-        Card (modifier=Modifier.fillMaxWidth().fillMaxHeight().clickable(onClick = onClick)){
+    Column(modifier = modifier.fillMaxWidth()) {
+        Card(modifier = Modifier.fillMaxWidth().fillMaxHeight().clickable(onClick = onClick)) {
             Row(
                 modifier = Modifier
                     .padding(horizontal = 8.dp, vertical = 0.dp)
@@ -524,29 +631,29 @@ fun GeneratorParametersInfo(
             }
             GeneratorParametersInfoRow(
                 category = "Shape",
-                value = generatorParameters.waveType.description
+                value = generatorChannelInfo.ampWaveName
             )
             GeneratorParametersInfoRow(
-                category = "Period",
-                value = String.format(Locale.US, "%.2f seconds", generatorParameters.period)
+                category = "Speed",
+                value = String.format(Locale.US, "%.2f", generatorChannelInfo.speed)
             )
-            val ampLow = String.format(Locale.US, "%.1f", generatorParameters.amplitudeLow * 100.0)
-            val ampHigh = String.format(Locale.US, "%.1f", generatorParameters.amplitudeHigh * 100.0)
-            var ampText = if (generatorParameters.waveType == WaveType.Constant) "$ampHigh%" else "$ampLow% - $ampHigh%"
+            val ampLow = String.format(Locale.US, "%.1f", generatorChannelInfo.minAmp * 100.0)
+            val ampHigh = String.format(Locale.US, "%.1f", generatorChannelInfo.maxAmp * 100.0)
+            var ampText = if (generatorChannelInfo.ampWaveName == "Constant") "$ampHigh%" else "$ampLow% - $ampHigh%"
             GeneratorParametersInfoRow(
                 category = "Power",
                 value = ampText
             )
             GeneratorParametersInfoRow(
                 category = "Freq shape",
-                value = generatorParameters.frequencyType.description
+                value = generatorChannelInfo.freqWaveName
             )
             val freqLow =
-                frequencyRange.start + generatorParameters.frequencyLow * (frequencyRange.endInclusive - frequencyRange.start)
+                frequencyRange.start + generatorChannelInfo.minFreq * (frequencyRange.endInclusive - frequencyRange.start)
             val freqHigh =
-                frequencyRange.start + generatorParameters.frequencyHigh * (frequencyRange.endInclusive - frequencyRange.start)
+                frequencyRange.start + generatorChannelInfo.maxFreq * (frequencyRange.endInclusive - frequencyRange.start)
             val freqText =
-                if (generatorParameters.frequencyType == WaveType.Constant)
+                if (generatorChannelInfo.freqWaveName == "Constant")
                     String.format(Locale.US, "%.1fHz", freqHigh)
                 else
                     String.format(Locale.US, "%.1fHz - %.1fHz", freqLow, freqHigh)
@@ -554,14 +661,6 @@ fun GeneratorParametersInfo(
                 category = "Freq",
                 value = freqText
             )
-            if(generatorParameters.timeOffset > 0.0) {
-                GeneratorParametersInfoRow(
-                    category = "Time offset",
-                    value = String.format(Locale.US, "%.2f seconds", generatorParameters.timeOffset)
-                )
-            } else {
-                GeneratorParametersInfoRow(" ", " ")
-            }
         }
     }
 }
@@ -588,32 +687,34 @@ fun GeneratorParametersInfoRow(
 }
 
 @Composable
-fun WaveTypePicker(
-    currentValue: WaveType,
-    onValueChange: (WaveType) -> Unit,
+fun <T> OptionPicker(
+    currentValue: T,
+    onValueChange: (T) -> Unit,
+    options: List<T>,
+    getText: (T) -> String,
     modifier: Modifier = Modifier
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val sortedOptions = remember(options, getText) {
+        options.sortedBy { getText(it) }
+    }
 
-    Box(modifier = modifier
-        .wrapContentSize(Alignment.TopStart)) {
-
+    Box(modifier = modifier.wrapContentSize(Alignment.TopStart)) {
         OutlinedButton(onClick = { expanded = true }) {
-            Text(text = currentValue.description)
+            Text(text = getText(currentValue))
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false }
         ) {
-            val sortedWaveTypes = WaveType.entries.sortedBy { it.description }
-            sortedWaveTypes.forEach { waveType ->
-                DropdownMenuItem(text = {
-                    Text(text = waveType.description)
-                },
-                onClick = {
-                    onValueChange(waveType)
-                    expanded = false
-                })
+            sortedOptions.forEach { option ->
+                DropdownMenuItem(
+                    text = { Text(getText(option)) },
+                    onClick = {
+                        onValueChange(option)
+                        expanded = false
+                    }
+                )
             }
         }
     }

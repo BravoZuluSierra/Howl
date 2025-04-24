@@ -7,15 +7,22 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.Boolean
 import kotlin.time.TimeMark
+import kotlin.Float
+
+const val showDeveloperOptions = false
 
 object DataRepository {
     var database: HowlDatabase? = null
 
-    private val _funscriptPlayerState = MutableStateFlow(FunscriptPlayerState())
-    val funscriptPlayerState: StateFlow<FunscriptPlayerState> = _funscriptPlayerState.asStateFlow()
+    private val _pulseHistory: MutableStateFlow<List<Pulse>> = MutableStateFlow(emptyList())
+    val pulseHistory: StateFlow<List<Pulse>> = _pulseHistory.asStateFlow()
+    const val MAX_HISTORY_SIZE = 200
 
-    private val _funscriptAdvancedControlsState = MutableStateFlow(FunscriptAdvancedControlsState())
-    val funscriptAdvancedControlsState: StateFlow<FunscriptAdvancedControlsState> = _funscriptAdvancedControlsState.asStateFlow()
+    private val _playerState = MutableStateFlow(PlayerState())
+    val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
+
+    private val _playerAdvancedControlsState = MutableStateFlow(PlayerAdvancedControlsState())
+    val playerAdvancedControlsState: StateFlow<PlayerAdvancedControlsState> = _playerAdvancedControlsState.asStateFlow()
 
     private val _mainOptionsState = MutableStateFlow(MainOptionsState())
     val mainOptionsState: StateFlow<MainOptionsState> = _mainOptionsState.asStateFlow()
@@ -23,8 +30,14 @@ object DataRepository {
     private val _miscOptionsState = MutableStateFlow(MiscOptionsState())
     val miscOptionsState: StateFlow<MiscOptionsState> = _miscOptionsState.asStateFlow()
 
+    private val _developerOptionsState = MutableStateFlow(DeveloperOptionsState())
+    val developerOptionsState: StateFlow<DeveloperOptionsState> = _developerOptionsState.asStateFlow()
+
     private val _generatorState = MutableStateFlow(GeneratorState())
     val generatorState: StateFlow<GeneratorState> = _generatorState.asStateFlow()
+
+    private val _activityState = MutableStateFlow(ActivityState())
+    val activityState: StateFlow<ActivityState> = _activityState.asStateFlow()
 
     private val _coyoteBatteryLevel = MutableStateFlow(0)
     val coyoteBatteryLevel: StateFlow<Int> = _coyoteBatteryLevel.asStateFlow()
@@ -39,12 +52,16 @@ object DataRepository {
         _coyoteParametersState.update { newCoyoteParametersState }
     }
 
-    fun setFunscriptPlayerState(newFunscriptPlayerState: FunscriptPlayerState) {
-        _funscriptPlayerState.update { newFunscriptPlayerState }
+    fun setActivityState(newActivityState: ActivityState) {
+        _activityState.update { newActivityState }
     }
 
-    fun setFunscriptAdvancedControlsState(newFunscriptAdvancedControlsState: FunscriptAdvancedControlsState) {
-        _funscriptAdvancedControlsState.update { newFunscriptAdvancedControlsState }
+    fun setPlayerState(newPlayerState: PlayerState) {
+        _playerState.update { newPlayerState }
+    }
+
+    fun setPlayerAdvancedControlsState(newPlayerAdvancedControlsState: PlayerAdvancedControlsState) {
+        _playerAdvancedControlsState.update { newPlayerAdvancedControlsState }
     }
 
     fun setMainOptionsState(newMainOptionsState: MainOptionsState) {
@@ -53,6 +70,10 @@ object DataRepository {
 
     fun setMiscOptionsState(newMiscOptionsState: MiscOptionsState) {
         _miscOptionsState.update { newMiscOptionsState }
+    }
+
+    fun setDeveloperOptionsState(newDeveloperOptionsState: DeveloperOptionsState) {
+        _developerOptionsState.update { newDeveloperOptionsState }
     }
 
     fun setCoyoteBatteryLevel(percent: Int) {
@@ -77,6 +98,10 @@ object DataRepository {
         _mainOptionsState.update { it.copy(globalMute = muted)}
     }
 
+    fun setPulseChartMode(mode: PulseChartMode) {
+        _mainOptionsState.update { it.copy(pulseChartMode = mode)}
+    }
+
     fun setSwapChannels(swap: Boolean) {
         _mainOptionsState.update { it.copy(swapChannels = swap)}
     }
@@ -85,12 +110,30 @@ object DataRepository {
         _mainOptionsState.update { it.copy(frequencyRange = range) }
     }
 
-    fun setFunscriptPlayerPosition(position: Double) {
-        _funscriptPlayerState.update { it.copy(currentPosition = position) }
+    fun setPlayerPosition(position: Double) {
+        _playerState.update { it.copy(currentPosition = position) }
+    }
+
+    fun setPlayerPulseSource(source: PulseSource?) {
+        _playerState.update { it.copy(activePulseSource = source) }
     }
 
     fun setGeneratorState(newGeneratorState: GeneratorState) {
         _generatorState.update { newGeneratorState }
+    }
+
+    fun addPulsesToHistory(newPulses: List<Pulse>) {
+        _pulseHistory.update {
+            _pulseHistory.value.toMutableList().apply {
+                this.addAll(newPulses)
+                while (this.size > MAX_HISTORY_SIZE)
+                    this.removeAt(0)
+            }
+        }
+    }
+
+    fun clearPulseHistory() {
+        _pulseHistory.update { emptyList() }
     }
 
     fun initialise(db: HowlDatabase) {
@@ -106,16 +149,24 @@ object DataRepository {
             channelBIntensityBalance = coyoteParametersState.value.channelBIntensityBalance,
             channelAFrequencyBalance = coyoteParametersState.value.channelAFrequencyBalance,
             channelBFrequencyBalance = coyoteParametersState.value.channelBFrequencyBalance,
-            frequencyInversionA = funscriptAdvancedControlsState.value.frequencyInversionA,
-            frequencyInversionB = funscriptAdvancedControlsState.value.frequencyInversionB,
-            channelBiasFactor = funscriptAdvancedControlsState.value.channelBiasFactor,
-            frequencyModEnable = funscriptAdvancedControlsState.value.frequencyModEnable,
-            frequencyModStrength = funscriptAdvancedControlsState.value.frequencyModStrength,
-            frequencyModPeriod = funscriptAdvancedControlsState.value.frequencyModPeriod,
-            frequencyModInvert = funscriptAdvancedControlsState.value.frequencyModInvert,
-            autoCycle = generatorState.value.autoCycle,
-            autoCycleTime = generatorState.value.autoCycleTime,
-            powerStepSize = miscOptionsState.value.powerStepSize
+            frequencyInversionA = playerAdvancedControlsState.value.frequencyInversionA,
+            frequencyInversionB = playerAdvancedControlsState.value.frequencyInversionB,
+            frequencyModEnable = playerAdvancedControlsState.value.frequencyModEnable,
+            frequencyModStrength = playerAdvancedControlsState.value.frequencyModStrength,
+            frequencyModPeriod = playerAdvancedControlsState.value.frequencyModPeriod,
+            frequencyModInvert = playerAdvancedControlsState.value.frequencyModInvert,
+            funscriptVolume = playerAdvancedControlsState.value.funscriptVolume,
+            funscriptPositionalEffectStrength = playerAdvancedControlsState.value.funscriptPositionalEffectStrength,
+            funscriptFeel = playerAdvancedControlsState.value.funscriptFeel,
+            funscriptFrequencyTimeOffset = playerAdvancedControlsState.value.funscriptFrequencyTimeOffset,
+            autoChange = generatorState.value.autoChange,
+            speedChangeProbability = generatorState.value.speedChangeProbability,
+            amplitudeChangeProbability = generatorState.value.amplitudeChangeProbability,
+            frequencyChangeProbability = generatorState.value.frequencyChangeProbability,
+            waveChangeProbability = generatorState.value.waveChangeProbability,
+            activityChangeProbability = activityState.value.activityChangeProbability,
+            powerStepSizeA = miscOptionsState.value.powerStepSizeA,
+            powerStepSizeB = miscOptionsState.value.powerStepSizeB
         )
         database?.savedSettingsDao()?.updateSettings(settings)
     }
@@ -133,51 +184,69 @@ object DataRepository {
             channelAFrequencyBalance = settings.channelAFrequencyBalance,
             channelBFrequencyBalance = settings.channelBFrequencyBalance
         ))
-        setFunscriptAdvancedControlsState(FunscriptAdvancedControlsState(
+        setPlayerAdvancedControlsState(PlayerAdvancedControlsState(
             frequencyInversionA = settings.frequencyInversionA,
             frequencyInversionB = settings.frequencyInversionB,
-            channelBiasFactor = settings.channelBiasFactor,
             frequencyModEnable = settings.frequencyModEnable,
             frequencyModStrength = settings.frequencyModStrength,
             frequencyModPeriod = settings.frequencyModPeriod,
-            frequencyModInvert = settings.frequencyModInvert
+            frequencyModInvert = settings.frequencyModInvert,
+            funscriptVolume = settings.funscriptVolume,
+            funscriptPositionalEffectStrength = settings.funscriptPositionalEffectStrength,
+            funscriptFeel = settings.funscriptFeel,
+            funscriptFrequencyTimeOffset = settings.funscriptFrequencyTimeOffset
         ))
         setGeneratorState(generatorState.value.copy(
-            autoCycle = settings.autoCycle,
-            autoCycleTime = settings.autoCycleTime
+            autoChange = settings.autoChange,
+            speedChangeProbability = settings.speedChangeProbability,
+            amplitudeChangeProbability = settings.amplitudeChangeProbability,
+            frequencyChangeProbability = settings.frequencyChangeProbability,
+            waveChangeProbability = settings.waveChangeProbability,
         ))
         setMiscOptionsState(MiscOptionsState(
-            powerStepSize = settings.powerStepSize
+            powerStepSizeA = settings.powerStepSizeA,
+            powerStepSizeB = settings.powerStepSizeB
+        ))
+        setActivityState(activityState.value.copy(
+            activityChangeProbability = settings.activityChangeProbability
         ))
     }
 
-    data class GeneratorState(
-        val initialised: Boolean = false,
-        val isPlaying: Boolean = false,
-        val patternStartTime: TimeMark? = null,
-        val channelAParameters: GeneratorParameters = GeneratorParameters(),
-        val channelBParameters: GeneratorParameters = GeneratorParameters(),
-        val autoCycle: Boolean = false,
-        val autoCycleTime: Int = 90
+    data class ActivityState(
+        val currentActivityDisplayName: String = "",
+        val activityChangeProbability: Float = 0.0f,
     )
 
-    data class FunscriptPlayerState(
-        val filename: String? = null,
+    data class GeneratorState(
+        val initialised: Boolean = false,
+        val channelAInfo: GeneratorChannelInfo = GeneratorChannelInfo(),
+        val channelBInfo: GeneratorChannelInfo = GeneratorChannelInfo(),
+        val autoChange: Boolean = true,
+        val speedChangeProbability: Double = 0.2,
+        val amplitudeChangeProbability: Double = 0.2,
+        val frequencyChangeProbability: Double = 0.2,
+        val waveChangeProbability: Double = 0.2,
+    )
+
+    data class PlayerState(
+        val activePulseSource: PulseSource? = null,
         val currentPosition: Double = 0.0,
         val startPosition: Double = 0.0,
         val isPlaying: Boolean = false,
-        val fileLength: Double = 0.0,
         val startTime: TimeMark? = null
     )
 
-    data class FunscriptAdvancedControlsState (
+    data class PlayerAdvancedControlsState (
         val frequencyInversionA: Boolean = false,
         val frequencyInversionB: Boolean = false,
-        val channelBiasFactor: Float = 0.7f,
         val frequencyModEnable: Boolean = false,
         val frequencyModStrength: Float = 0.1f,
         val frequencyModPeriod: Float = 1.0f,
-        val frequencyModInvert: Boolean = false
+        val frequencyModInvert: Boolean = false,
+        var funscriptVolume: Float = 0.5f,
+        val funscriptPositionalEffectStrength: Float = 1.0f,
+        var funscriptFeel: Float = 1.0f,
+        var funscriptFrequencyTimeOffset: Float = 0.1f,
     )
 
     data class MainOptionsState (
@@ -185,10 +254,21 @@ object DataRepository {
         val channelBPower: Int = 0,
         val globalMute: Boolean = false,
         val swapChannels: Boolean = false,
-        val frequencyRange: ClosedFloatingPointRange<Float> = 10f..100f
+        val frequencyRange: ClosedFloatingPointRange<Float> = 10f..100f,
+        val pulseChartMode: PulseChartMode = PulseChartMode.Off
     )
 
     data class MiscOptionsState (
-        val powerStepSize: Int = 1,
+        val powerStepSizeA: Int = 1,
+        val powerStepSizeB: Int = 1,
+    )
+
+    data class DeveloperOptionsState (
+        val developerFrequencyExponent: Float = 1.0f,
+        val developerFrequencyGain: Float = 1.0f,
+        val developerFrequencyAdjustA: Float = 0.0f,
+        val developerFrequencyAdjustB: Float = 0.0f,
+        val developerAmplitudeExponent: Float = 1.0f,
+        val developerAmplitudeGain: Float = 1.0f,
     )
 }

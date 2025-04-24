@@ -1,4 +1,5 @@
 package com.example.howl
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -34,6 +35,7 @@ import kotlin.math.roundToInt
 
 class MainOptionsViewModel() : ViewModel() {
     val mainOptionsState: StateFlow<DataRepository.MainOptionsState> = DataRepository.mainOptionsState
+    val miscOptionsState: StateFlow<DataRepository.MiscOptionsState> = DataRepository.miscOptionsState
 
     fun updateMainOptionsState(newMainOptionsState: DataRepository.MainOptionsState) {
         DataRepository.setMainOptionsState(newMainOptionsState)
@@ -58,6 +60,13 @@ class MainOptionsViewModel() : ViewModel() {
     fun setFrequencyRange(range: ClosedFloatingPointRange<Float>) {
         DataRepository.setFrequencyRange(range)
     }
+
+    fun cyclePulseChart() {
+        val newMode = mainOptionsState.value.pulseChartMode.next()
+        DataRepository.setPulseChartMode(newMode)
+        if (newMode == PulseChartMode.Off)
+            DataRepository.clearPulseHistory()
+    }
 }
 
 @Composable
@@ -66,6 +75,7 @@ fun MainOptionsPanel(
     modifier: Modifier = Modifier
 ) {
     val mainOptionsState by viewModel.mainOptionsState.collectAsStateWithLifecycle()
+    val miscOptionsState by viewModel.miscOptionsState.collectAsStateWithLifecycle()
     val minSeparation = 5f
     val muted = mainOptionsState.globalMute
     val swapChannels = mainOptionsState.swapChannels
@@ -83,12 +93,14 @@ fun MainOptionsPanel(
             PowerLevelPanel(
                 title = "Channel A Power",
                 power = mainOptionsState.channelAPower,
-                onPowerChange = viewModel::setChannelAPower
+                onPowerChange = viewModel::setChannelAPower,
+                stepSize = miscOptionsState.powerStepSizeA
             )
             PowerLevelPanel(
                 title = "Channel B Power",
                 power = mainOptionsState.channelBPower,
-                onPowerChange = viewModel::setChannelBPower
+                onPowerChange = viewModel::setChannelBPower,
+                stepSize = miscOptionsState.powerStepSizeB
             )
         }
         Spacer(modifier = Modifier.height(16.dp))
@@ -111,6 +123,15 @@ fun MainOptionsPanel(
             Button(
                 modifier = Modifier.height(50.dp),
                 onClick = {
+                    viewModel.cyclePulseChart()
+                },
+            ) {
+                Icon(painter = painterResource(R.drawable.chart), contentDescription = "Pulse chart")
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+            Button(
+                modifier = Modifier.height(50.dp),
+                onClick = {
                     viewModel.setSwapChannels(!swapChannels)
                 },
                 colors = ButtonDefaults.buttonColors(
@@ -119,6 +140,7 @@ fun MainOptionsPanel(
             ) {
                 Icon(painter = painterResource(R.drawable.swap), contentDescription = "Swap channels")
             }
+
         }
 
         Spacer(modifier = Modifier.height(16.dp))
@@ -151,6 +173,54 @@ fun MainOptionsPanel(
             )
             Text(text = "${mainOptionsState.frequencyRange.endInclusive.roundToInt()}", modifier = modifier.widthIn(30.dp))
         }
+        when (mainOptionsState.pulseChartMode) {
+            PulseChartMode.Combined -> {
+                PulsePlotter(
+                    modifier = Modifier
+                        .height(200.dp)
+                        .fillMaxWidth()
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.outline,
+                            shape = MaterialTheme.shapes.small
+                        )
+                        .padding(3.dp),
+                    mode = PulsePlotMode.Combined
+                )
+            }
+            PulseChartMode.Separate -> {
+                Row(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    PulsePlotter(
+                        modifier = Modifier
+                            .height(200.dp)
+                            .weight(1.0f)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                                shape = MaterialTheme.shapes.small
+                            )
+                            .padding(3.dp),
+                        mode = PulsePlotMode.AmplitudeOnly
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    PulsePlotter(
+                        modifier = Modifier
+                            .height(200.dp)
+                            .weight(1.0f)
+                            .border(
+                                width = 1.dp,
+                                color = MaterialTheme.colorScheme.outline,
+                                shape = MaterialTheme.shapes.small
+                            )
+                            .padding(3.dp),
+                        mode = PulsePlotMode.FrequencyOnly
+                    )
+                }
+            }
+            PulseChartMode.Off -> {}
+        }
     }
 }
 
@@ -158,7 +228,8 @@ fun MainOptionsPanel(
 fun PowerLevelPanel(
     title: String,
     power: Int,
-    onPowerChange: (Int) -> Unit
+    onPowerChange: (Int) -> Unit,
+    stepSize: Int
 ) {
     Column {
         Text(text = title, modifier = Modifier.align(Alignment.CenterHorizontally))
@@ -169,7 +240,7 @@ fun PowerLevelPanel(
         )
         Row {
             Button(
-                onClick = { onPowerChange(maxOf(0, power - DataRepository.miscOptionsState.value.powerStepSize)) },
+                onClick = { onPowerChange(maxOf(0, power - stepSize)) },
                 modifier = Modifier.size(68.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
@@ -177,7 +248,7 @@ fun PowerLevelPanel(
             }
             Spacer(modifier = Modifier.width(8.dp))
             Button(
-                onClick = { onPowerChange(power + DataRepository.miscOptionsState.value.powerStepSize) },
+                onClick = { onPowerChange(power + stepSize) },
                 modifier = Modifier.size(68.dp),
                 shape = RoundedCornerShape(16.dp)
             ) {
