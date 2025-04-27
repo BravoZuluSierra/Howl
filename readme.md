@@ -47,17 +47,21 @@ Here are some screenshots of different parts of the application.
 
 ## Electrode setup and balance
 
-The suggested electrode setup is to connect your lower down electrode on channel "A" and your higher up electrode on channel "B". This is especially important for funscripts and some of the built-in activities which use positional effects.
+We suggest setting up your electrodes such that channel "A" produces a sensation you feel lower down, and channel "B" produces a sensation that you feel higher up. This is especially important for funscripts and some of the built-in activities which use positional effects.
 
-Exactly what electrodes you're using or where to place them is personal preference. We just need "A" to be something you feel lower down, and "B" to be something you feel higher up.
+Exactly what electrodes to use and where to place them is personal preference. Most common is to have two separate poles on each channel, which usually means two electrodes (e.g. two TENS pads or two conductive rubber loops on a channel), but some toys will be connected as both poles on their own. You can also use a configuration with three poles in total, with both channels sharing one common electrode in the middle (and having an additional dedicated one each).
 
-We've provided some calibration patterns (found on the "Activity" tab) to help you choose optimal settings to get the best effect.
+Either type of setup can work well with Howl, it's just a matter of finding what electrodes and placements feel best to you. The only important thing is that activity on channel "A" gives you a lower sensation, and activity on channel "B" gives you a higher sensation. For example when playing back a funscript we will send a stronger signal on A if the stroker device we're simulating would be at the bottom, or a stronger signal on B if the stroker would be at the top.
+
+Always follow best practice and your device manufacturer's instructions, and do not under any circumstances connect any electrode above your waist.
+
+We've provided some calibration patterns (found on the "Activity" tab) to help you choose optimal settings to get the best effect with your chosen electrode configuration.
 
 ### Calibration 1 - positional effects
 
-To optimally experience positional effects, it helps if the power levels to each of your electrodes are well balanced, with signals to A and B feeling equally strong.
+To optimally experience positional effects, it helps if the power levels to each channel are well balanced, with signals to A and B feeling equally strong.
 
-Calibration 1 is a pattern that moves from electrode A to electrode B and back, repeating every 4 seconds. Just a single frequency (the middle of the configured range) is used. The goal is to adjust your main power levels for channel A and B so that each end (when the signal is fully on A or fully on B) feels equally strong to you.
+Calibration 1 is a pattern that moves from channel A to channel B and back, repeating every 4 seconds. Just a single frequency (the middle of the configured range) is used. The goal is to adjust your main power levels for channel A and B so that each end (when the signal is fully on A or fully on B) feels equally strong to you.
 
 Once you've done this adjustment, you should hopefully find that you can feel the illusion of sensation travelling through the middle (where you don't directly have electrodes) as it moves back and forth. This is the intended positional effect.
 
@@ -67,13 +71,13 @@ It's not an exact science as you'll probably want to adjust power levels over th
 
 Calibration 2 is a pattern that sweeps through all of the configured frequency range. It's designed to help you optimally set the frequency balance parameters (which are a feature of the Coyote hardware) so that high and low frequencies feel equally strong.
 
-The pattern changes electrode periodically, as follows: -
-* Electrode A only (16 seconds)
-* Electrode B only (16 seconds)
-* Both electrodes simultaneously (16 seconds)
-* Then back to electrode A only, with the same pattern repeating forever.
+The pattern changes channels periodically, as follows: -
+* Channel A only (16 seconds)
+* Channel B only (16 seconds)
+* Both channels simultaneously (16 seconds)
+* Then back to channel A only, with the same pattern repeating forever.
 
-Your goal is to make the lowest (most thumpy) frequency and the highest (most buzzy) frequency on each electrode feel equally strong to you. This can be a little tricky as they are different types of sensations, but this is all about your perception, so just give it your best shot.
+Your goal is to make the lowest (most thumpy) frequency and the highest (most buzzy) frequency on each channel feel equally strong to you. This can be a little tricky as they are different types of sensations, but this is all about your perception, so just give it your best shot.
 
 You adjust this by changing "Channel A Frequency Balance" (or the equivalent for channel B), which is found on the "Settings" page.
 * If the low frequencies are too weak and the highs feel stronger, increase the frequency balance.
@@ -149,11 +153,11 @@ Be careful not to unintentionally leave this setting enabled, as it will affect 
 Increasing this makes funscript playback "louder" at a particular power level, but this is at the cost of dynamic range. The more you increase it, the less difference there will be in feeling between fast and slow actions (our algorithm generally gives faster movements higher power than slower ones). The default value is 0.5.
 
 **Positional effect strength**
-This adjusts the strength of the positional effect that Howl uses to "pan" between the electrodes when playing funscripts. At 0 there is no positional effect, and both electrodes always have the same power level. At 1 there is the maximum possible positional effect, with only channel B used for funscript positions at the very top, and only channel A used for positions at the very bottom.
+This adjusts the strength of the positional effect that Howl uses to "pan" between the channels when playing funscripts. At 0 there is no positional effect, and both channels always have the same power level. At 1 there is the maximum possible positional effect, with only channel B used for funscript positions at the very top, and only channel A used for positions at the very bottom.
 
 The default value is 1. If you are only using a single channel setup, 0 will give you the best result, as the positional effect cannot work in a single channel configuration.
 
-For some files or electrode setups, you might prefer mid-range values. For example at 0.7, the positional effect is pretty strong and you can clearly feel movement in line with the funscript, but there's still a bit of "spillover" onto the other electrode even for top/bottom positions.
+For some files or electrode setups, you might prefer mid-range values. For example at 0.7, the positional effect is pretty strong and you can clearly feel movement in line with the funscript, but there's still a bit of "spillover" onto the other channel even for the very top/bottom positions.
 
 **Feel adjustment**
 This changes the way in which the configured frequency range is used, which allows some control over the general feeling of the script. The default value is 1.0. Values higher than 1 result in more use of lower frequencies, which can feel more "thumpy" and "physical". Values less than 1 result in more use of higher frequencies, which can feel more "buzzy" and "electrical". It's probably easiest to think of the control as shifting where the middle of the frequency range is (but everything is rescaled around this so the full range is still used).
@@ -206,7 +210,7 @@ Generates completely random frequencies and amplitudes on both channels, the Coy
 A phantom tongue (or is it multiple tongues?) repeatedly licks you at varying positions and speeds, with little regard for the laws of physics. It's a complicated pattern with instantaneous jumps and a high level of speed and amplitude variance. This is generally one for high frequency enjoyers, as only the top half of the configured frequency range is used.
 
 ### Luxury HJ
-Inspired by some good old fashioned stroking, there's lots of smooth top to bottom activity using our positional algorithm. The speed shifts around smoothly and fairly often. "What makes it luxury?" you may ask. From time to time a different "bonus" pattern can appear on either electrode which is supposed to feel like flickering touches around that point directly. That might be a sweeping palm, or a probing finger. Depends on your imagination and where you put your electrodes I guess. Ooh la la!
+Inspired by some good old fashioned stroking, there's lots of smooth top to bottom activity using our positional algorithm. The speed shifts around smoothly and fairly often. "What makes it luxury?" you may ask. From time to time a different "bonus" pattern can appear on either channel which is supposed to feel like flickering touches around those electrodes directly. That might be a sweeping palm, or a probing finger. Depends on your imagination and where you put your electrodes I guess. Ooh la la!
 
 ### Milkmaster 3000
 A merciless milking machine from the year 3000. This one can be pretty intense. Moo.
@@ -240,7 +244,7 @@ This seems to be another way to adjust the low frequencies on the relevant chann
 ### Misc options
 
 **Power control step size**
-This sets how much the power level changes by when you press the large plus/minus buttons in Howl to change the channel A or B power. The default is 1. This is a convenience setting for users who like to use high power levels, allowing them to be reached without having to press the adjustment buttons as many times. The step size can be independently configured for each channel, which can be helpful when using two different kinds of electrode.
+This sets how much the power level changes by when you press the large plus/minus buttons in Howl to change the channel A or B power. The default is 1. This is a convenience setting for users who like to use high power levels, allowing them to be reached without having to press the adjustment buttons as many times. The step size can be independently configured for each channel, which can be helpful when using different types of electrode.
 
 ## About HWL files and how to make them
 
