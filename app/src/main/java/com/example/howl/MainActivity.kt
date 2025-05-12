@@ -27,7 +27,8 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // don't draw behind Navigation-Bar
+        // enableEdgeToEdge()
         setContent {
             HowlTheme {
                 val howlDatabase = HowlDatabase.getDatabase(this)
