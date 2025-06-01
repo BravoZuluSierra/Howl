@@ -204,7 +204,7 @@ fun ActivityHostPanel(
         )
         LazyVerticalGrid(
             columns = GridCells.Fixed(2),
-            modifier = Modifier.fillMaxWidth().height(280.dp),
+            modifier = Modifier.fillMaxWidth().height(360.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {

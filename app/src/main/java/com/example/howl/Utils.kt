@@ -1,6 +1,11 @@
 package com.example.howl
 
+import android.util.Log
+import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.exp
+import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -14,6 +19,16 @@ data class WavePoint(
 enum class InterpolationType {
     HERMITE, LINEAR
 }
+
+data class FrequencyConverterPoint(
+    val position: Double,
+    val frequency: Double
+)
+
+enum class FrequencyInterpolationType {
+    SMOOTHSTEP, LINEAR
+}
+
 
 data class WaveShape(
     val name: String,
@@ -37,6 +52,11 @@ fun Double.roughlyEqual(other: Double) : Boolean {
 }
 
 fun Double.scaleBetween(a: Double, b: Double): Double {
+    return (a + (b - a) * this).coerceIn(minOf(a, b), maxOf(a, b))
+}
+
+fun Double.scaleBetween(range: ClosedRange<Double>): Double {
+    val (a, b) = range.start to range.endInclusive
     return (a + (b - a) * this).coerceIn(minOf(a, b), maxOf(a, b))
 }
 
@@ -164,6 +184,26 @@ fun calculatePositionalEffect(
     return Pair(amplitudeA, amplitudeB)
 }
 
+fun calculateEngulfEffect(
+    amplitude: Double,
+    position: Double,
+    channelAEngulfPoint: Double,
+    channelBEngulfPoint: Double,
+): Pair<Double, Double> {
+    fun calculateChannelAmplitude(position: Double, engulfPoint: Double): Double {
+        val distance = abs(position - engulfPoint)
+        val falloffFactor = 0.8
+        return if (position <= engulfPoint) {
+            if (engulfPoint == 0.0) 1.0 else sqrt(position / engulfPoint)
+        } else {
+            sqrt(1.0 - distance * falloffFactor)
+        }
+    }
+    val ampA = calculateChannelAmplitude(position, channelAEngulfPoint) * amplitude
+    val ampB = calculateChannelAmplitude(position, channelBEngulfPoint) * amplitude
+    return Pair(ampA, ampB)
+}
+
 fun calculateFeelAdjustment(
     frequency: Double,
     feelExponent: Double,
@@ -180,6 +220,10 @@ class TimerManager {
             return
         }
         timers[key] = Timer(duration, duration, callback)
+    }
+
+    fun cancelTimer(key: String) {
+        timers.remove(key)
     }
 
     fun hasTimer(key: String): Boolean = timers.containsKey(key)
@@ -295,5 +339,62 @@ class SmoothedValue(initialValue: Double = 0.0) {
         val callback = onReached
         onReached = null
         callback?.invoke()
+    }
+}
+
+class FrequencyConverter(
+    points: List<FrequencyConverterPoint>,
+    private val interpolationType: FrequencyInterpolationType
+) {
+    private val sortedPoints: List<FrequencyConverterPoint>
+
+    init {
+        require(points.isNotEmpty()) { "At least one point is required" }
+        sortedPoints = points.sortedBy { it.position }
+    }
+
+    fun getFrequency(position: Double): Double {
+        if (sortedPoints.size == 1) {
+            return sortedPoints.first().frequency
+        }
+
+        if (position <= sortedPoints.first().position) {
+            return sortedPoints.first().frequency
+        }
+
+        if (position >= sortedPoints.last().position) {
+            return sortedPoints.last().frequency
+        }
+
+        for (i in 0 until sortedPoints.size - 1) {
+            val current = sortedPoints[i]
+            val next = sortedPoints[i + 1]
+            if (position in current.position..next.position) {
+                return interpolate(current, next, position)
+            }
+        }
+
+        throw IllegalStateException("Failed to find interval for position $position during frequency conversion")
+    }
+
+    private fun interpolate(
+        lower: FrequencyConverterPoint,
+        upper: FrequencyConverterPoint,
+        position: Double
+    ): Double {
+        return when (interpolationType) {
+            FrequencyInterpolationType.LINEAR -> linearInterpolate(
+                t = position,
+                t0 = lower.position,
+                p0 = lower.frequency,
+                t1 = upper.position,
+                p1 = upper.frequency
+            )
+            FrequencyInterpolationType.SMOOTHSTEP -> {
+                val h = (position - lower.position) / (upper.position - lower.position)
+                val smoothH = smoothstep(h)
+                lower.frequency + smoothH * (upper.frequency - lower.frequency)
+            }
+        }
     }
 }

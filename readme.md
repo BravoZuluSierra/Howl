@@ -203,8 +203,17 @@ The activities are generally designed with the default 10Hz-100Hz frequency rang
 
 A short description of the currently available activities is given below. Please keep in mind that nothing is gender restricted, regardless of how it's described. One of the great things about estim is that it's all just electrons, and your perception of patterns could be different from mine.
 
+### Additive
+Inspired by the audio technique of additive synthesis, this activity takes two simple underlying waves and combines them in different proportions to generate the output amplitudes and frequencies. We also periodically change the speeds and shapes of the underlying waves, as well as the proportions used to combine them. The end result produces some very complicated and interesting patterns, which will keep changing over time as we modify parameters.
+
+### BJ megamix
+An ambitious activity that moves randomly between four distinct stages, intended to represent aspects of a blowjob. The stages are suck, deepthroat, tip licks, and full length (base to tip) licks. The licking stages are typically shorter and are intended to break up the main patterns and make the flow of the activity more interesting. Can you feel the differences between all four patterns?
+
 ### Chaos
 Generates completely random frequencies and amplitudes on both channels, the Coyote equivalent of "white noise". To add a bit of additional interest, how long each value is held for changes periodically and can be anywhere from 1-10 cycles (0.025 seconds to 0.25 seconds).
+
+### Fast/slow
+One channel has a very fast sawtooth wave, and the other has a very slow sawtooth wave. One starts at the maximum frequency, and one starts at the minimum frequency. Over the course of an iteration of the pattern, the slow wave speeds up, the fast wave slows down, the minimum frequency wave inreases in frequency, and the maximum frequency wave reduces in frequency. Until the waves on each channel have essentially swapped, and then the pattern repeats. To make things a bit more interesting the sawtooth waves can go in either direction and can be linear or hermite interpolated. Sometimes aspects of the pattern will swap instantaneously at the end of an iteration.
 
 ### Infinite licks
 A phantom tongue (or is it multiple tongues?) repeatedly licks you at varying positions and speeds, with little regard for the laws of physics. It's a complicated pattern with instantaneous jumps and a high level of speed and amplitude variance. This is generally one for high frequency enjoyers, as only the top half of the configured frequency range is used.
