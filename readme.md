@@ -33,11 +33,7 @@ Here are some screenshots of different parts of the application.
 
 <a href="screenshots/player.png"><img src="screenshots/player.png" width="270" alt="Player"></a>
 
-### Player with chart
-
 <a href="screenshots/player2.png"><img src="screenshots/player2.png" width="270" alt="Player with chart"></a>
-
-### Player settings
 
 <a href="screenshots/player_settings.png"><img src="screenshots/player_settings.png" width="270" alt="Player settings"></a>
 
@@ -52,8 +48,6 @@ Here are some screenshots of different parts of the application.
 ### Settings
 
 <a href="screenshots/settings.png"><img src="screenshots/settings.png" width="270" alt="Settings"></a>
-
-### Settings 2
 
 <a href="screenshots/settings2.png"><img src="screenshots/settings2.png" width="270" alt="Settings 2"></a>
 
