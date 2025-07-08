@@ -1,6 +1,7 @@
 package com.example.howl
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -23,6 +24,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableDoubleStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -39,22 +41,13 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.howl.ui.theme.HowlTheme
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 import kotlin.time.DurationUnit
 import kotlin.time.TimeSource.Monotonic.markNow
 import java.util.Locale
-import kotlin.math.min
 import kotlin.math.pow
-import kotlin.math.sin
-import kotlinx.coroutines.isActive
-import kotlin.math.max
-import kotlin.time.toDuration
+import java.lang.ref.WeakReference
 
 fun formatTime(position: Double): String {
     val minutes = (position / 60).toInt()
@@ -73,16 +66,22 @@ interface PulseSource {
 }
 
 object Player {
-    private val playerScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-    private var playerLoopJob: Job? = null
+    private var contextRef: WeakReference<Context>? = null
+    val mainTimerDelay: Double = 0.1
+    val pulseBatchSize: Int = 4
+    val pulseTime = mainTimerDelay / pulseBatchSize
+    private var autoIncrementPowerCounterA: Int = 0
+    private var autoIncrementPowerCounterB: Int = 0
+
+    fun initialise(context: Context) {
+        this.contextRef = WeakReference(context)
+    }
     fun getNextTimes(time: Double): List<Double> {
-        val times: List<Double> = listOf(
-            time,
-            time + DGCoyote.PULSE_TIME,
-            time + DGCoyote.PULSE_TIME * 2.0,
-            time + DGCoyote.PULSE_TIME * 3.0
-        )
-        return times
+        val playbackSpeed = DataRepository.playerAdvancedControlsState.value.playbackSpeed
+        val relativePulseTime = pulseTime * playbackSpeed
+        return List(pulseBatchSize) { index ->
+            time + relativePulseTime * index.toDouble()
+        }
     }
     fun updatePlayerState(newPlayerState: DataRepository.PlayerState) {
         DataRepository.setPlayerState(newPlayerState)
@@ -90,18 +89,8 @@ object Player {
     fun updateAdvancedControlsState(newAdvancedControlsState: DataRepository.PlayerAdvancedControlsState) {
         DataRepository.setPlayerAdvancedControlsState(newAdvancedControlsState)
     }
-    fun calculateFrequencyShift(time: Double, originalFrequency: Float, period: Float, amplitude: Float, inverse: Boolean): Float {
-        val freqModTime = (time % period) / period
-        val freqModSine = sin(Math.PI * 2.0 * freqModTime)
-        val freqAmp = if (inverse)
-            if (freqModSine > 0) min(amplitude, originalFrequency) else min(amplitude, (1.0f - originalFrequency))
-        else
-            if (freqModSine > 0) min(amplitude, (1.0f - originalFrequency)) else min(amplitude, originalFrequency)
-        val freqMod = freqModSine * freqAmp
-        val newFreq = if (inverse) originalFrequency - freqMod else originalFrequency + freqMod
-        return newFreq.toFloat().coerceIn(0.0f..1.0f)
-    }
     fun applyPostProcessing(time: Double, pulse: Pulse): Pulse {
+        val mainOptionsState = DataRepository.mainOptionsState.value
         val advancedControlState = DataRepository.playerAdvancedControlsState.value
         val developerOptionsState = DataRepository.developerOptionsState.value
         var newFreqA = pulse.freqA
@@ -112,10 +101,6 @@ object Player {
             newFreqA = 1 - pulse.freqA
         if (advancedControlState.frequencyInversionB)
             newFreqB = 1 - pulse.freqB
-        if (advancedControlState.frequencyModEnable) {
-            newFreqA = calculateFrequencyShift(time = time, originalFrequency = newFreqA, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = advancedControlState.frequencyModInvert)
-            newFreqB = calculateFrequencyShift(time = time, originalFrequency = newFreqB, period = advancedControlState.frequencyModPeriod, amplitude = advancedControlState.frequencyModStrength, inverse = false)
-        }
         if (showDeveloperOptions) {
             newAmpA =
                 (newAmpA.pow(developerOptionsState.developerAmplitudeExponent) * developerOptionsState.developerAmplitudeGain).coerceIn(0f, 1f)
@@ -129,7 +114,11 @@ object Player {
             newFreqB = (newFreqB + developerOptionsState.developerFrequencyAdjustB).coerceIn(0f, 1f)
         }
 
-        return(Pulse(ampA = newAmpA, ampB = newAmpB, freqA = newFreqA, freqB = newFreqB))
+        val swapChannels = mainOptionsState.swapChannels
+        return if(swapChannels)
+            (Pulse(ampA = newAmpB, ampB = newAmpA, freqA = newFreqB, freqB = newFreqA))
+        else
+            (Pulse(ampA = newAmpA, ampB = newAmpB, freqA = newFreqA, freqB = newFreqB))
     }
     fun getPulseAtTime(time: Double): Pulse {
         val activePulseSource = DataRepository.playerState.value.activePulseSource
@@ -137,7 +126,6 @@ object Player {
         return applyPostProcessing(time, pulse)
     }
     fun stopPlayer() {
-        playerLoopJob?.cancel()
         updatePlayerState(DataRepository.playerState.value.copy(isPlaying = false))
     }
     fun startPlayer(from: Double? = null) {
@@ -147,62 +135,9 @@ object Player {
             return
         updatePlayerState(playerState.copy(isPlaying = true, startTime = markNow(), startPosition = playFrom))
 
-        playerLoopJob?.cancel()
-        playerLoopJob = playerScope.launch {
-            while (isActive) {
-                val startTime = System.nanoTime()
-                val playerState = DataRepository.playerState.value
-                if (!playerState.isPlaying) break
-
-                val currentSource = playerState.activePulseSource
-                val currentPosition = getCurrentPosition()
-
-                if (currentSource == null) {
-                    stopPlayer()
-                    continue
-                }
-
-                if (currentSource.duration != null && currentSource.duration!! > 0) {
-                    if (currentPosition > currentSource.duration!!) {
-                        if (currentSource.shouldLoop) {
-                            startPlayer(0.0)
-                        }
-                        else
-                            stopPlayer()
-                        continue
-                    }
-                }
-
-                val mainOptionsState = DataRepository.mainOptionsState.value
-                val connected = DataRepository.coyoteConnectionStatus.value == ConnectionStatus.Connected
-                val swapChannels = mainOptionsState.swapChannels
-                val chartVisible = mainOptionsState.pulseChartMode != PulseChartMode.Off
-
-                val times = getNextTimes(currentPosition)
-                val pulses = times.map { getPulseAtTime(it) }
-
-                if (connected && !mainOptionsState.globalMute) {
-                    DGCoyote.sendPulse(
-                        mainOptionsState.channelAPower,
-                        mainOptionsState.channelBPower,
-                        mainOptionsState.frequencyRange.start,
-                        mainOptionsState.frequencyRange.endInclusive,
-                        swapChannels,
-                        pulses
-                    )
-                }
-
-                if (chartVisible) DataRepository.addPulsesToHistory(pulses)
-
-                val nextPosition = currentPosition + DGCoyote.PULSE_TIME * 4.0
-                DataRepository.setPlayerPosition(nextPosition)
-                currentSource.updateState(nextPosition)
-
-                val elapsed = System.nanoTime() - startTime
-                val delayNanos = max(100_000_000L - elapsed, 90_000_000L)
-                delay(delayNanos.toDuration(DurationUnit.NANOSECONDS))
-            }
-        }
+        val context = contextRef?.get() ?: return
+        val serviceIntent = Intent(context, PlayerService::class.java)
+        context.startService(serviceIntent)
     }
     fun loadFile(uri: Uri, context: Context) {
         DataRepository.setPlayerPosition(0.0)
@@ -231,10 +166,34 @@ object Player {
     }
     fun getCurrentPosition(): Double {
         val playerState = DataRepository.playerState.value
-        return playerState.startPosition + playerState.startTime!!.elapsedNow()
-            .toDouble(
-                DurationUnit.SECONDS
-            )
+        val playbackSpeed = DataRepository.playerAdvancedControlsState.value.playbackSpeed
+        val elapsed = playerState.startTime?.elapsedNow()?.toDouble(DurationUnit.SECONDS) ?: 0.0
+        return playerState.startPosition + elapsed * playbackSpeed
+    }
+    fun handlePowerAutoIncrement() {
+        val mainOptionsState = DataRepository.mainOptionsState.value
+        val miscOptionsState = DataRepository.miscOptionsState.value
+
+        if (mainOptionsState.autoIncreasePower == true && mainOptionsState.globalMute == false) {
+            if (mainOptionsState.channelAPower > 0)
+                autoIncrementPowerCounterA++
+            if (mainOptionsState.channelBPower > 0)
+                autoIncrementPowerCounterB++
+
+            val autoIncrementDelayA =
+                miscOptionsState.powerAutoIncrementDelayA
+            val autoIncrementDelayB =
+                miscOptionsState.powerAutoIncrementDelayB
+            //Log.d("Player", "Auto increment calculation $autoIncrementPowerCounterA / $autoIncrementDelayA      $autoIncrementPowerCounterB / $autoIncrementDelayB")
+            if (autoIncrementPowerCounterA >= autoIncrementDelayA * 10) {
+                autoIncrementPowerCounterA = 0
+                DataRepository.setChannelAPower(mainOptionsState.channelAPower + 1)
+            }
+            if (autoIncrementPowerCounterB >= autoIncrementDelayB * 10) {
+                autoIncrementPowerCounterB = 0
+                DataRepository.setChannelBPower(mainOptionsState.channelBPower + 1)
+            }
+        }
     }
     fun setCurrentPosition(position: Double) {
         DataRepository.setPlayerPosition(position)
@@ -260,6 +219,34 @@ class PlayerViewModel() : ViewModel() {
 
     fun startPlayer(from: Double? = null) {
         Player.startPlayer(from)
+    }
+
+    fun seek(position: Double) {
+        val playerState = DataRepository.playerState.value
+        val finite = playerState.activePulseSource?.isFinite
+        if (finite == true) {
+            Player.updatePlayerState(
+                playerState.copy(
+                    currentPosition = position,
+                )
+            )
+            if (playerState.isPlaying)
+                resyncPlayer(position)
+        }
+    }
+
+    fun resyncPlayer(position: Double? = null) {
+        val playerState = DataRepository.playerState.value
+        val pos = position ?: playerState.currentPosition
+
+        if (playerState.isPlaying) {
+            Player.updatePlayerState(
+                playerState.copy(
+                    startTime = markNow(),
+                    startPosition = pos
+                )
+            )
+        }
     }
 
     fun loadFile(uri: Uri, context: Context) {
@@ -288,8 +275,20 @@ fun AdvancedControlsPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Text(text = "General settings", style = MaterialTheme.typography.headlineSmall)
+            Text(text = "Global settings", style = MaterialTheme.typography.headlineSmall)
         }
+        SliderWithLabel(
+            label = "Playback speed",
+            value = advancedControlsState.playbackSpeed,
+            onValueChange = {
+                viewModel.updateAdvancedControlsState(advancedControlsState.copy(playbackSpeed = it))
+                viewModel.resyncPlayer()
+            },
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = 0.25f..4.0f,
+            steps = 14,
+            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
+        )
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
@@ -326,67 +325,6 @@ fun AdvancedControlsPanel(
                 }
             )
         }
-        /*Row(
-            modifier = Modifier.fillMaxWidth().padding(4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            Text(text = "Frequency modulation", style = MaterialTheme.typography.headlineSmall)
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = "Enable", style = MaterialTheme.typography.labelLarge)
-            Switch(
-                checked = advancedControlsState.frequencyModEnable,
-                onCheckedChange = {
-                    viewModel.updateAdvancedControlsState(
-                        advancedControlsState.copy(
-                            frequencyModEnable = it
-                        )
-                    )
-                    viewModel.saveSettings()
-                }
-            )
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Text(text = "Channels do opposites", style = MaterialTheme.typography.labelLarge)
-            Switch(
-                checked = advancedControlsState.frequencyModInvert,
-                onCheckedChange = {
-                    viewModel.updateAdvancedControlsState(
-                        advancedControlsState.copy(
-                            frequencyModInvert = it
-                        )
-                    )
-                    viewModel.saveSettings()
-                }
-            )
-        }
-        SliderWithLabel(
-            label = "Amount of movement",
-            value = advancedControlsState.frequencyModStrength,
-            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(frequencyModStrength = it))},
-            onValueChangeFinished = { viewModel.saveSettings() },
-            valueRange = 0.01f..0.5f,
-            steps = 48,
-            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
-        )
-        SliderWithLabel(
-            label = "Wave period (seconds)",
-            value = advancedControlsState.frequencyModPeriod,
-            onValueChange = {viewModel.updateAdvancedControlsState(advancedControlsState.copy(frequencyModPeriod = it))},
-            onValueChangeFinished = { viewModel.saveSettings() },
-            valueRange = 0.5f..5.0f,
-            steps = 44,
-            valueDisplay = { String.format(Locale.US, "%03.2f", it) }
-        )*/
         Row(
             modifier = Modifier.fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -442,6 +380,12 @@ fun PlayerPanel(
     val context = LocalContext.current
     var showAdvancedSettings by remember { mutableStateOf(false) }
 
+    // Temporary variables that we use to ensure the player position only gets
+    // updated once the user finishes dragging the drag handle on the seek bar.
+    // This prevents sending garbled output when the user drags during playback.
+    var isDragging by remember { mutableStateOf(false) }
+    var tempPosition by remember { mutableDoubleStateOf(playerState.currentPosition) }
+
     val filePickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
         onResult = { uri: Uri? ->
@@ -468,17 +412,29 @@ fun PlayerPanel(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             // Position Display
-            Text(text = formatTime(playerState.currentPosition))
+            val pos = if (isDragging) tempPosition else playerState.currentPosition
+            Text(text = formatTime(pos))
             Spacer(modifier = Modifier.width(4.dp))
+
             // Seek Bar
             Slider(
-                value = playerState.currentPosition.toFloat(),
-                onValueChange = { newValue ->
-                    viewModel.updatePlayerState(playerState.copy(currentPosition = newValue.toDouble()))
+                value = pos.toFloat(),
+                onValueChange = {
+                    tempPosition = it.toDouble()
+                    if (!isDragging) isDragging = true
                 },
                 valueRange = 0f..duration.toFloat(),
-                onValueChangeFinished = { }
+                onValueChangeFinished = {
+                    isDragging = false
+                    viewModel.seek(tempPosition)
+                }
             )
+            /*Slider(
+                value = playerState.currentPosition.toFloat(),
+                onValueChange = { viewModel.seek(it.toDouble()) },
+                valueRange = 0f..duration.toFloat(),
+                onValueChangeFinished = { }
+            )*/
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

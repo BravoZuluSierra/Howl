@@ -22,6 +22,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.material3.Switch
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -73,6 +74,13 @@ fun CoyoteParametersPanel(
             .padding(16.dp)
             .fillMaxWidth(),
     ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Howl version $howlVersion", style = MaterialTheme.typography.labelLarge)
+        }
         Row(
             modifier = Modifier.fillMaxWidth().padding(4.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -146,7 +154,7 @@ fun CoyoteParametersPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.Center
         ) {
-            Text(text = "Misc options", style = MaterialTheme.typography.headlineSmall)
+            Text(text = "Power options", style = MaterialTheme.typography.headlineSmall)
         }
         val powerStepRange: IntRange = 1..10
         SliderWithLabel(
@@ -167,6 +175,81 @@ fun CoyoteParametersPanel(
             steps = powerStepRange.endInclusive - 1,
             valueDisplay = { it.roundToInt().toString() }
         )
+        val autoIncrementRange: IntRange = 5..300
+        SliderWithLabel(
+            label = "Power auto increase delay A (seconds)",
+            value = miscOptionsState.powerAutoIncrementDelayA.toFloat(),
+            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerAutoIncrementDelayA = it.roundToInt())) },
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = autoIncrementRange.toClosedFloatingPointRange(),
+            steps = ((autoIncrementRange.endInclusive - autoIncrementRange.start) * 0.2 - 1).roundToInt(),
+            valueDisplay = { it.roundToInt().toString() }
+        )
+        SliderWithLabel(
+            label = "Power auto increase delay B (seconds)",
+            value = miscOptionsState.powerAutoIncrementDelayB.toFloat(),
+            onValueChange = { viewModel.setMiscOptionsState(miscOptionsState.copy(powerAutoIncrementDelayB = it.roundToInt())) },
+            onValueChangeFinished = { viewModel.saveSettings() },
+            valueRange = autoIncrementRange.toClosedFloatingPointRange(),
+            steps = ((autoIncrementRange.endInclusive - autoIncrementRange.start) * 0.2 - 1).roundToInt(),
+            valueDisplay = { it.roundToInt().toString() }
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Text(text = "Misc options", style = MaterialTheme.typography.headlineSmall)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Options marked with [*] increase resource usage. Disable to improve performance on low-end devices and reduce energy use.", style = MaterialTheme.typography.labelSmall)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Smoother charts & meters [*]", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = miscOptionsState.smootherCharts,
+                onCheckedChange = {
+                    viewModel.setMiscOptionsState(miscOptionsState.copy(smootherCharts = it))
+                    viewModel.saveSettings()
+                }
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Show animated power meters [*]", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = miscOptionsState.showPowerMeter,
+                onCheckedChange = {
+                    viewModel.setMiscOptionsState(miscOptionsState.copy(showPowerMeter = it))
+                    viewModel.saveSettings()
+                }
+            )
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(text = "Show debug log tab", style = MaterialTheme.typography.labelLarge)
+            Switch(
+                checked = miscOptionsState.showDebugLog,
+                onCheckedChange = {
+                    viewModel.setMiscOptionsState(miscOptionsState.copy(showDebugLog = it))
+                    viewModel.saveSettings()
+                }
+            )
+        }
         if (showDeveloperOptions) {
             Row(
                 modifier = Modifier.fillMaxWidth().padding(4.dp),

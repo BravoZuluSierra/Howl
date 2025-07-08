@@ -1,11 +1,7 @@
 package com.example.howl
 
 import android.util.Log
-import kotlin.math.PI
 import kotlin.math.abs
-import kotlin.math.cos
-import kotlin.math.exp
-import kotlin.math.max
 import kotlin.math.pow
 import kotlin.math.sqrt
 import kotlin.random.Random
@@ -63,8 +59,22 @@ fun Double.scaleBetween(range: ClosedRange<Double>): Double {
 val ClosedRange<Double>.toFloatRange: ClosedFloatingPointRange<Float>
     get() = this.start.toFloat()..this.endInclusive.toFloat()
 
-fun randomInRange(range: ClosedRange<Double>): Double {
-    return Random.nextDouble(range.start, range.endInclusive)
+fun randomInRange(range: ClosedRange<Double>, bias: Double = 1.0): Double {
+    /*
+        Generates a random number in the specified range, optionally with biased probability
+        where certain values are more likely.
+        When bias > 1, lower values become more probable
+        When bias = 1, results are uniform (no bias)
+        When 0 < bias < 1, higher values become more probable
+    */
+    require(bias > 0) { "Bias must be positive" }
+    val min = minOf(range.start, range.endInclusive)
+    val max = maxOf(range.start, range.endInclusive)
+    if (min == max) return min
+
+    val u = Random.nextDouble(0.0, 1.0) // Uniform in [0, 1)
+    val skewed = u.pow(bias) // Apply bias transformation
+    return min + skewed * (max - min)
 }
 
 fun randomInRange(range: IntRange): Int {

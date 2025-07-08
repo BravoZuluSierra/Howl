@@ -60,13 +60,13 @@ data class Pulse (
 
 @Suppress("DEPRECATION")
 object DGCoyote {
+    private const val TAG = "BLE"
     val POWER_RANGE: IntRange = 0..200
     val FREQUENCY_RANGE: IntRange = 1..200
     val INTERNAL_FREQUENCY_RANGE: IntRange = 5..240
     val INTENSITY_RANGE: IntRange = 0..100
     val FREQUENCY_BALANCE_RANGE: IntRange = 0..255
     val INTENSITY_BALANCE_RANGE: IntRange = 0..255
-    const val PULSE_TIME = 0.025
     //battery polling can fail if it's too close to other Bluetooth activity like sending pulses
     //the unusual interval helps to avoid this happening multiple times in a row
     private const val BATTERY_POLL_INTERVAL_SECS = 60.02
@@ -76,8 +76,8 @@ object DGCoyote {
     data class Parameters (
         val channelALimit: Int = 70,
         val channelBLimit: Int = 70,
-        val channelAFrequencyBalance: Int = 160,
-        val channelBFrequencyBalance: Int = 160,
+        val channelAFrequencyBalance: Int = 200,
+        val channelBFrequencyBalance: Int = 200,
         val channelAIntensityBalance: Int = 0,
         val channelBIntensityBalance: Int = 0
     )
@@ -110,14 +110,11 @@ object DGCoyote {
     val ALL_BLE_PERMISSIONS = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         arrayOf(
             Manifest.permission.BLUETOOTH_CONNECT,
-            Manifest.permission.BLUETOOTH_SCAN,
-            Manifest.permission.ACCESS_FINE_LOCATION
+            Manifest.permission.BLUETOOTH_SCAN
         )
     }
     else {
         arrayOf(
-            Manifest.permission.BLUETOOTH_ADMIN,
-            Manifest.permission.BLUETOOTH,
             Manifest.permission.ACCESS_FINE_LOCATION
         )
     }
@@ -125,7 +122,7 @@ object DGCoyote {
     @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
     @SuppressLint("MissingPermission")
     private fun runConnectionProcess() {
-        Log.d("DGCoyote", "runConnectionProcess - state ${currentConnectionStage.name}")
+        HLog.d(TAG, "runConnectionProcess - state ${currentConnectionStage.name}")
         when(currentConnectionStage) {
             ConnectionStage.Disconnected -> {
                 onConnectionStatusUpdate?.invoke(ConnectionStatus.Connecting)
@@ -137,7 +134,7 @@ object DGCoyote {
                 //we already handle starting the scan above when leaving the disconnected state
             }
             ConnectionStage.ConnectToDevice -> {
-                gatt = bluetoothDevice?.connectGatt(contextRef?.get(), false, callback)
+                gatt = bluetoothDevice?.connectGatt(contextRef?.get(), false, callback, BluetoothDevice.TRANSPORT_LE)
             }
             ConnectionStage.ServiceDiscovery -> {
                 gatt?.discoverServices()
@@ -198,7 +195,6 @@ object DGCoyote {
     private fun pulseDataToByteArray(
         minFrequency: Float,
         maxFrequency: Float,
-        swapChannels: Boolean,
         pulseData: List<Pulse>
     ): ByteArray {
         val frequencyRange = maxFrequency - minFrequency
@@ -211,10 +207,7 @@ object DGCoyote {
         val channelAConvertedIntensities = pulseData.map { (it.ampA * 100).roundToInt().coerceIn(INTENSITY_RANGE).toByte() }.toByteArray()
         val channelBConvertedIntensities = pulseData.map { (it.ampB * 100).roundToInt().coerceIn(INTENSITY_RANGE).toByte() }.toByteArray()
 
-        return if (swapChannels)
-            channelBConvertedFrequencies + channelBConvertedIntensities + channelAConvertedFrequencies + channelAConvertedIntensities
-        else
-            channelAConvertedFrequencies + channelAConvertedIntensities + channelBConvertedFrequencies + channelBConvertedIntensities
+        return channelAConvertedFrequencies + channelAConvertedIntensities + channelBConvertedFrequencies + channelBConvertedIntensities
     }
 
     @SuppressLint("MissingPermission")
@@ -222,13 +215,12 @@ object DGCoyote {
                   channelBStrength: Int,
                   minFrequency: Float,
                   maxFrequency: Float,
-                  swapChannels: Boolean,
                   pulseData: List<Pulse>
     ) {
         val expectedParameters = 4
         var strengthByte = 0x00.toByte()
         if(pulseData.size != expectedParameters) {
-            Log.d("DGCoyote", "Incorrect number of parameters in call to sendPulse")
+            HLog.d(TAG, "Incorrect number of parameters in call to sendPulse")
             return
         }
         if(channelAStrength != previousChannelAStrength || channelBStrength != previousChannelBStrength) {
@@ -244,7 +236,7 @@ object DGCoyote {
             channelBStrength.toByte(), // channel B updated strength setting
         )
 
-        val completeCommand = command + pulseDataToByteArray(minFrequency, maxFrequency, swapChannels, pulseData)
+        val completeCommand = command + pulseDataToByteArray(minFrequency, maxFrequency, pulseData)
         //Log.v("DGCoyote", "Sending pulse command, data: ${completeCommand.toHexString()}")
         sendCommand(completeCommand)
     }
@@ -256,7 +248,7 @@ object DGCoyote {
 
     @SuppressLint("MissingPermission")
     fun pollBatteryLevel() {
-        Log.d("DGCoyote","Polling battery level")
+        HLog.d(TAG, "Polling battery level")
         val service = gatt?.getService(batteryServiceUUID)
         val characteristic = service?.getCharacteristic(batteryCharacteristicUUID)
         if (characteristic != null) {
@@ -324,13 +316,18 @@ object DGCoyote {
         @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             super.onConnectionStateChange(gatt, status, newState)
+            if(status != BluetoothGatt.GATT_SUCCESS) {
+                HLog.d(TAG, "onConnectionStateChange error, will disconnect. Status:$status newState:$newState")
+                disconnect()
+                return
+            }
+
             if (newState == BluetoothGatt.STATE_CONNECTED) {
-                Log.d("DGCoyote", "Bluetooth device connected")
+                HLog.d(TAG, "Bluetooth device connected")
                 currentConnectionStage = ConnectionStage.ServiceDiscovery
                 runConnectionProcess()
-            }
-            else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
-                Log.d("DGCoyote", "Bluetooth device disconnected")
+            } else if (newState == BluetoothGatt.STATE_DISCONNECTED) {
+                HLog.d(TAG, "Bluetooth device disconnected")
                 disconnect()
             }
         }
@@ -338,7 +335,12 @@ object DGCoyote {
         @RequiresPermission(PERMISSION_BLUETOOTH_CONNECT)
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             super.onServicesDiscovered(gatt, status)
-            Log.d("DGCoyote", "Bluetooth services discovered")
+            if(status != BluetoothGatt.GATT_SUCCESS) {
+                HLog.d(TAG, "onServicesDiscovered error, will disconnect. Status:$status")
+                disconnect()
+                return
+            }
+            HLog.d(TAG, "Bluetooth services discovered")
             services = gatt.services
             //gatt.printGattTable()
             currentConnectionStage = ConnectionStage.RegisterForStatusUpdates
@@ -360,15 +362,15 @@ object DGCoyote {
                     runConnectionProcess()
                 }
                 else {
-                    Log.v(
-                        "DGCoyote",
+                    HLog.d(
+                        TAG,
                         "Descriptor ${descriptor.uuid} of characteristic ${descriptor.characteristic.uuid}: write success"
                     )
                 }
 
             }
             else {
-                Log.v("DGCoyote", "Descriptor ${descriptor.uuid} of characteristic ${descriptor.characteristic.uuid}: write fail (status=$status)")
+                HLog.d(TAG, "Descriptor ${descriptor.uuid} of characteristic ${descriptor.characteristic.uuid}: write fail (status=$status)")
             }
         }
 
@@ -395,7 +397,7 @@ object DGCoyote {
                 }
             }
             else {
-                Log.v("DGCoyote", "Characteristic write failed for ${characteristic.uuid}, error: $status")
+                HLog.d(TAG, "Characteristic write failed for ${characteristic.uuid}, error: $status")
             }
         }
 
@@ -408,7 +410,7 @@ object DGCoyote {
             if (characteristic.uuid == batteryCharacteristicUUID) {
                 //Log.v("DGCoyote", "Hex data for battery level ${characteristic.value.toHexString()}")
                 val batteryLevel = characteristic.value.first().toInt()
-                Log.v("DGCoyote", "Fetched Coyote battery level: $batteryLevel%")
+                HLog.d(TAG, "Fetched Coyote battery level: $batteryLevel%")
                 onBatteryLevelUpdate?.invoke(batteryLevel)
             }
         }
@@ -443,8 +445,8 @@ object DGCoyote {
                 }
             }
             else {
-                Log.v("DGCoyote", "Unexpected Bluetooth characteristic change ${characteristic.uuid}")
-                Log.v("DGCoyote", "Hex data for unexpected characteristic ${characteristic.value.toHexString()}")
+                HLog.d(TAG, "Unexpected Bluetooth characteristic change ${characteristic.uuid}")
+                HLog.d(TAG, "Hex data for unexpected characteristic ${characteristic.value.toHexString()}")
             }
         }
     }
@@ -467,13 +469,14 @@ object DGCoyote {
         }
 
         if (permissionsToRequest.isNotEmpty()) {
-            Log.d("DGCoyote", "Requesting Bluetooth permissions")
+            HLog.d(TAG, "Requesting Bluetooth permissions $permissionsToRequest")
             val activity = context as? MainActivity ?: return false
             ActivityCompat.requestPermissions(activity, permissionsToRequest.toTypedArray(), 1)
             return false
         }
 
         // All permissions are granted
+        HLog.d(TAG, "Required permissions are already granted")
         return true
     }
 
@@ -483,11 +486,15 @@ object DGCoyote {
         val context = contextRef?.get() ?: return
         val timeoutHandler = Handler(Looper.getMainLooper())
 
-        val bluetooth = context.getSystemService(Context.BLUETOOTH_SERVICE)
-                as? BluetoothManager
-            ?: throw Exception("Bluetooth is not supported by this device")
+        val bluetooth = context.getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        if (bluetooth == null || bluetooth.adapter == null) {
+            HLog.d(TAG, "Bluetooth is not supported by this device.")
+            disconnect()
+            return
+        }
 
         if(!bluetooth.adapter.isEnabled) {
+            HLog.d(TAG, "The Bluetooth adapter is currently disabled (do you have Bluetooth turned on?)")
             disconnect()
             return
         }
@@ -510,7 +517,7 @@ object DGCoyote {
             override fun onScanResult(callbackType: Int, result: android.bluetooth.le.ScanResult?) {
                 result?.let {
                     bluetoothDevice = it.device
-                    Log.d("DGCoyote", "Found device: ${bluetoothDevice?.name} - ${bluetoothDevice?.address}")
+                    HLog.d(TAG, "Found device: ${bluetoothDevice?.name} - ${bluetoothDevice?.address}")
                     timeoutHandler.removeCallbacksAndMessages(null)
                     scanner.stopScan(this)
                     currentConnectionStage = ConnectionStage.ConnectToDevice
@@ -519,20 +526,21 @@ object DGCoyote {
             }
 
             override fun onScanFailed(errorCode: Int) {
-                Log.e("DGCoyote", "Scan failed with error code: $errorCode")
+                HLog.d(TAG, "Scan failed with error code: $errorCode")
+                disconnect()
             }
         }
 
         val timeout = object : Runnable {
             override fun run () {
-                Log.d("DGCoyote", "Device not found after BLE scan")
+                HLog.d(TAG, "Scan timed out, no device found")
                 scanner.stopScan(scanCallback)
                 disconnect()
             }
         }
 
         // Start the BLE scan
-        Log.d("DGCoyote", "Starting BLE scan")
+        HLog.d(TAG, "Starting BLE scan")
         scanner.startScan(listOf(scanFilter), scanSettings, scanCallback)
 
         // Set a handler to stop the scan after 10 seconds

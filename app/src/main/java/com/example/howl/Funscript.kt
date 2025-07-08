@@ -9,7 +9,6 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import java.util.TreeMap
-import kotlin.math.pow
 
 class BadFileException (message: String) : Exception(message)
 
