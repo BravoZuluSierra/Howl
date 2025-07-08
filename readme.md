@@ -29,15 +29,33 @@ It will only work on devices that support Bluetooth Low Energy (BLE), as this is
 
 Here are some screenshots of different parts of the application.
 
-<a href="screenshots/player.png"><figure><img src="screenshots/player.png" width="270" alt="Player"><figcapation>Player</figcaption></figure></a>
-<a href="screenshots/player2.png"><figure><img src="screenshots/player2.png" width="270" alt="Player with chart"><figcapation>Player (with chart)</figcaption></figure></a>
-<a href="screenshots/player_settings.png"><figure><img src="screenshots/player_settings.png" width="270" alt="Player settings"><figcapation>Player settings</figcaption></figure></a>
-<br>
-<a href="screenshots/generator.png"><figure><img src="screenshots/generator.png" width="270" alt="Generator"><figcapation>Generator</figcaption></figure></a>
-<a href="screenshots/activity.png"><figure><img src="screenshots/activity.png" width="270" alt="Activity"><figcapation>Activity</figcaption></figure></a>
-<a href="screenshots/settings.png"><figure><img src="screenshots/settings.png" width="270" alt="Settings"><figcapation>Settings</figcaption></figure></a>
-<a href="screenshots/settings2.png"><figure><img src="screenshots/settings2.png" width="270" alt="Settings 2"><figcapation>Settings 2</figcaption></figure></a>
+### Player
 
+<a href="screenshots/player.png"><img src="screenshots/player.png" width="270" alt="Player"></a>
+
+### Player with chart
+
+<a href="screenshots/player2.png"><img src="screenshots/player2.png" width="270" alt="Player with chart"></a>
+
+### Player settings
+
+<a href="screenshots/player_settings.png"><img src="screenshots/player_settings.png" width="270" alt="Player settings"></a>
+
+### Generator
+
+<a href="screenshots/generator.png"><img src="screenshots/generator.png" width="270" alt="Generator"></a>
+
+### Activity
+
+<a href="screenshots/activity.png"><img src="screenshots/activity.png" width="270" alt="Activity"></a>
+
+### Settings
+
+<a href="screenshots/settings.png"><img src="screenshots/settings.png" width="270" alt="Settings"></a>
+
+### Settings 2
+
+<a href="screenshots/settings2.png"><img src="screenshots/settings2.png" width="270" alt="Settings 2"></a>
 
 ## Electrode setup and balance
 
