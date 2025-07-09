@@ -29,27 +29,40 @@ It will only work on devices that support Bluetooth Low Energy (BLE), as this is
 
 Here are some screenshots of different parts of the application.
 
-### Player
+<table>
+  <tr>
+    <td>Player</td>
+    <td>Player with chart</td>
+    <td>Player settings</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/player.png"><img src="screenshots/player.png" width="270" alt="Player"></a></td>
+    <td><a href="screenshots/player2.png"><img src="screenshots/player2.png" width="270" alt="Player with chart"></a></td>
+    <td><a href="screenshots/player_settings.png"><img src="screenshots/player_settings.png" width="270" alt="Player settings"></a></td>
+  </tr>
+</table>
 
-<a href="screenshots/player.png"><img src="screenshots/player.png" width="270" alt="Player"></a>
+<table>
+  <tr>
+    <td>Generator</td>
+    <td>Activity</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/generator.png"><img src="screenshots/generator.png" width="270" alt="Generator"></a></td>
+    <td><a href="screenshots/activity.png"><img src="screenshots/activity.png" width="270" alt="Activity"></a></td>
+  </tr>
+</table>
 
-<a href="screenshots/player2.png"><img src="screenshots/player2.png" width="270" alt="Player with chart"></a>
-
-<a href="screenshots/player_settings.png"><img src="screenshots/player_settings.png" width="270" alt="Player settings"></a>
-
-### Generator
-
-<a href="screenshots/generator.png"><img src="screenshots/generator.png" width="270" alt="Generator"></a>
-
-### Activity
-
-<a href="screenshots/activity.png"><img src="screenshots/activity.png" width="270" alt="Activity"></a>
-
-### Settings
-
-<a href="screenshots/settings.png"><img src="screenshots/settings.png" width="270" alt="Settings"></a>
-
-<a href="screenshots/settings2.png"><img src="screenshots/settings2.png" width="270" alt="Settings 2"></a>
+<table>
+  <tr>
+    <td>Settings (1)</td>
+    <td>Settings (2)</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/settings.png"><img src="screenshots/settings.png" width="270" alt="Settings"></a></td>
+    <td><a href="screenshots/settings2.png"><img src="screenshots/settings2.png" width="270" alt="Settings 2"></a></td>
+  </tr>
+</table>
 
 ## Electrode setup and balance
 
