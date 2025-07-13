@@ -1,9 +1,7 @@
 package com.example.howl
 
 import android.util.Log
-import kotlin.concurrent.timer
 import kotlin.math.abs
-import kotlin.math.exp
 import kotlin.math.pow
 import kotlin.random.Random
 
@@ -189,6 +187,7 @@ class PenetrationActivity : Activity() {
         )
     }
 }
+
 
 class VibroActivity : Activity() {
     override val displayName = "Sliding vibrator"
@@ -1057,37 +1056,47 @@ class FastSlowActivity : Activity() {
 class AdditiveActivity : Activity() {
     override val displayName = "Additive"
     override val iconResId = R.drawable.additive
-    val waveManager: WaveManager = WaveManager()
+    val waveManager1: WaveManager = WaveManager()
     val waveManager2: WaveManager = WaveManager()
+    val waveManagers = listOf(waveManager1, waveManager2)
 
     val speedChangeSecsRange = 10.0..30.0
-    val proportionChangeSecsRange = 10.0..50.0
-    val speedRange = 0.05..3.0
+    val proportionChangeSecsRange = 10.0..30.0
+    val shapeChangeSecsRange = 10.0..60.0
+    val speedRange = 0.08..2.0
+    val speedBias = 2.5
     val speedChangeRateRange = 0.03..0.2
     val proportionRange = 0.0..1.0
+    val proportionChangeRate = 0.05
+    val wavePowerRange = 0.7..1.0
     val waveShapeChangeProbability = 0.3
-    var proportionA = randomInRange(proportionRange)
-    var proportionB = randomInRange(proportionRange)
-    var proportionFreqA = randomInRange(proportionRange)
-    var proportionFreqB = randomInRange(proportionRange)
+    val proportionChangeProbability = 0.3
+    val speedChangeProbability = 0.3
+    val ampProportionA = SmoothedValue(randomInRange(proportionRange))
+    val ampProportionB = SmoothedValue(randomInRange(proportionRange))
+    val freqProportionA = SmoothedValue(randomInRange(proportionRange))
+    val freqProportionB = SmoothedValue(randomInRange(proportionRange))
 
     init {
-        waveManager.addWave(randomWave())
-        waveManager2.addWave(randomWave())
-        waveManager.setSpeed(randomInRange(speedRange))
-        waveManager2.setSpeed(randomInRange(speedRange))
+        waveManagers.forEach { wm ->
+            wm.addWave(randomWave(), name="amp")
+            wm.addWave(randomWave(), name="freq")
+            wm.setSpeed(randomInRange(speedRange, speedBias))
+        }
+        shapeChange()
         speedChange()
         proportionChange()
     }
 
     fun randomWave(): CyclicalWave {
         val point = randomInRange(0.01..0.99)
+        val power = randomInRange(wavePowerRange)
         val wave = CyclicalWave(
             WaveShape(
-                name = "main",
+                name = "random",
                 points = listOf(
                     WavePoint(0.0, 0.0, 0.0),
-                    WavePoint(point, 0.9, 0.0),
+                    WavePoint(point, power, 0.0),
                 ),
                 interpolationType = InterpolationType.HERMITE
             )
@@ -1096,25 +1105,46 @@ class AdditiveActivity : Activity() {
     }
 
     fun proportionChange() {
-        proportionA = randomInRange(proportionRange)
-        proportionB = randomInRange(proportionRange)
-        proportionFreqA = randomInRange(proportionRange)
-        proportionFreqB = randomInRange(proportionRange)
+        //Log.d("Activity", "Proportion change called")
+        if(Random.nextDouble() < proportionChangeProbability)
+            ampProportionA.setTarget(randomInRange(proportionRange), proportionChangeRate)
+        if(Random.nextDouble() < proportionChangeProbability)
+            ampProportionB.setTarget(randomInRange(proportionRange), proportionChangeRate)
+        if(Random.nextDouble() < proportionChangeProbability)
+            freqProportionA.setTarget(randomInRange(proportionRange), proportionChangeRate)
+        if(Random.nextDouble() < proportionChangeProbability)
+            freqProportionB.setTarget(randomInRange(proportionRange), proportionChangeRate)
         val nextProportionChangeSecs = randomInRange(proportionChangeSecsRange)
-        if(Random.nextDouble() < waveShapeChangeProbability)
-            waveManager.addWave(randomWave())
-        if(Random.nextDouble() < waveShapeChangeProbability)
-            waveManager2.addWave(randomWave())
         timerManager.addTimer("proportionChange", nextProportionChangeSecs) {
             proportionChange()
         }
     }
 
+    fun shapeChange() {
+        //Log.d("Activity", "Shape change called")
+        waveManagers.forEach { wm ->
+            if(Random.nextDouble() < waveShapeChangeProbability) {
+                wm.addWave(randomWave(), name="amp")
+            }
+            if(Random.nextDouble() < waveShapeChangeProbability) {
+                wm.addWave(randomWave(), name="freq")
+            }
+        }
+        val nextShapeChangeSecs = randomInRange(shapeChangeSecsRange)
+        timerManager.addTimer("shapeChange", nextShapeChangeSecs) {
+            shapeChange()
+        }
+    }
+
     fun speedChange() {
-        val wm = if (Random.nextBoolean()) waveManager else waveManager2
-        val newSpeed = randomInRange(speedRange)
-        val changeRate = randomInRange(speedChangeRateRange)
-        wm.setTargetSpeed(newSpeed, changeRate)
+        //Log.d("Activity", "Speed change called")
+        waveManagers.forEach { wm ->
+            if(Random.nextDouble() < speedChangeProbability) {
+                val newSpeed = randomInRange(speedRange, speedBias)
+                val changeRate = randomInRange(speedChangeRateRange)
+                wm.setTargetSpeed(newSpeed, changeRate)
+            }
+        }
         val nextSpeedChangeSecs = randomInRange(speedChangeSecsRange)
         timerManager.addTimer("speedChange", nextSpeedChangeSecs) {
             speedChange()
@@ -1123,17 +1153,25 @@ class AdditiveActivity : Activity() {
 
     override fun runSimulation(deltaSimulationTime: Double) {
         super.runSimulation(deltaSimulationTime)
-        waveManager.update(deltaSimulationTime)
-        waveManager2.update(deltaSimulationTime)
+        waveManagers.forEach { wm ->
+            wm.update(deltaSimulationTime)
+        }
+        ampProportionA.update(deltaSimulationTime)
+        ampProportionB.update(deltaSimulationTime)
+        freqProportionA.update(deltaSimulationTime)
+        freqProportionB.update(deltaSimulationTime)
     }
 
     override fun getPulse(): Pulse {
-        val pos1 = waveManager.getPosition("main")
-        val pos2 = waveManager2.getPosition("main")
-        var ampA = (pos1 * proportionA) + (pos2 * (1.0 - proportionA))
-        var ampB = (pos1 * proportionB) + (pos2 * (1.0 - proportionB))
-        var freqA = (pos1 * proportionFreqA) + (pos2 * (1.0 - proportionFreqA))
-        var freqB = (pos1 * proportionFreqB) + (pos2 * (1.0 - proportionFreqB))
+        val ampPos1 = waveManager1.getPosition("amp")
+        val ampPos2 = waveManager2.getPosition("amp")
+        val freqPos1 = waveManager1.getPosition("freq")
+        val freqPos2 = waveManager2.getPosition("freq")
+
+        val ampA = (ampPos1 * ampProportionA.current) + (ampPos2 * (1.0 - ampProportionA.current))
+        val ampB = (ampPos1 * ampProportionB.current) + (ampPos2 * (1.0 - ampProportionB.current))
+        val freqA = (freqPos1 * freqProportionA.current) + (freqPos2 * (1.0 - freqProportionA.current))
+        val freqB = (freqPos1 * freqProportionB.current) + (freqPos2 * (1.0 - freqProportionB.current))
 
         return Pulse(
             freqA = freqA.toFloat(),

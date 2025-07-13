@@ -29,21 +29,40 @@ It will only work on devices that support Bluetooth Low Energy (BLE), as this is
 
 Here are some screenshots of different parts of the application.
 
-### Player screenshot
+<table>
+  <tr>
+    <td>Player</td>
+    <td>Player with chart</td>
+    <td>Player settings</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/player.png"><img src="screenshots/player.png" width="270" alt="Player"></a></td>
+    <td><a href="screenshots/player2.png"><img src="screenshots/player2.png" width="270" alt="Player with chart"></a></td>
+    <td><a href="screenshots/player_settings.png"><img src="screenshots/player_settings.png" width="270" alt="Player settings"></a></td>
+  </tr>
+</table>
 
-![Player](/screenshots/player.png)
+<table>
+  <tr>
+    <td>Generator</td>
+    <td>Activity</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/generator.png"><img src="screenshots/generator.png" width="270" alt="Generator"></a></td>
+    <td><a href="screenshots/activity.png"><img src="screenshots/activity.png" width="270" alt="Activity"></a></td>
+  </tr>
+</table>
 
-### Wave generator screenshot
-
-![Wave generator](/screenshots/generator.png)
-
-### Activity screenshot
-
-![Activity](/screenshots/activity.png)
-
-### Settings screenshot
-
-![Coyote settings](/screenshots/settings.png)
+<table>
+  <tr>
+    <td>Settings (1)</td>
+    <td>Settings (2)</td>
+  </tr>
+  <tr>
+    <td><a href="screenshots/settings.png"><img src="screenshots/settings.png" width="270" alt="Settings"></a></td>
+    <td><a href="screenshots/settings2.png"><img src="screenshots/settings2.png" width="270" alt="Settings 2"></a></td>
+  </tr>
+</table>
 
 ## Electrode setup and balance
 
@@ -93,17 +112,30 @@ Howl's main controls are displayed in the top section of the screen.
 
 ### Channel A/B power controls
 
-The plus and minus buttons adjust the overall power on their corresponding channel up and down. This directly corresponds to the power level on the Coyote, and has a maximum range of 0 to 200. The maximum level you can turn the power up to is also governed by the power limit configured on the settings page (which is fairly conservatively set to 70 by default).
+The plus and minus buttons adjust the overall power on their corresponding channel up and down. This directly corresponds to the power level on the Coyote, and has a maximum range of 0 to 200. The maximum level you can turn the power up to is also governed by the power limit configured on the settings page.
 
-The step size for the power controls defaults to 1, but this can be increased on the settings page if you would like larger steps.
+The step size for the power controls defaults to 1, but this can be increased on the settings page if you would like larger steps. A long press on the minus control allows power on the corresponding channel to be quickly set to zero.
 
 ### Mute pulse output button
 
 This button mutes all pulse output to the Coyote when activated, until it is pressed again. Files keep playing during this time, but no output is sent. This control is very handy if you want to briefly mute in order to adjust your electrodes. The fact that playback continues allows funscripts to remain in sync.
 
+### Automatic power increase button
+
+When toggled on, the power level will automatically be increased periodically. The delay is configurable on the "Settings" page, and can optionally be different for each channel.
+
+To help with safety and predictability, the auto increase will only happen when the following conditions are met: -
+
+* The automatic increase toggle button is on.
+* Something is actively being played.
+* The mute output control is off.
+* Power on the channel is higher than zero (you must manually set the power level to at least 1 before the automatic increases will begin).
+
+The power level increases by 1 each time the configured delay elapses, it does not use the configured power step size. This is by design and allows for the smoothest possible increase over time.
+
 ### Pulse chart toggle button
 
-The chart toggle button (looks like a section of line graph) can show a basic pulse chart to give a visual display of what output Howl is generating. This is extremely useful for development and debugging, or just general interest. 
+The chart toggle button (looks like a section of line graph) can show a basic pulse chart to give a visual display of what output Howl is generating. This is extremely useful for development and debugging, or just general interest. The chart cannot be used to diagnose performance issues as it only shows what we generated, not when or if the pulse was actually sent.
 
 The button toggles between 3 chart modes: -
 
@@ -118,13 +150,11 @@ Two separate charts are displayed. For both charts the X axis is time (most rece
 
 Each point represents a set of values we've calculated to send to the Coyote, so points occur on each channel every 1/40th of a second to correspond to its maximum update rate. The last 200 pulses we've calculated (5 seconds of data) are shown by the charts.
 
-The actual pulse output is smoother than the chart appears (for efficiency reasons we only update the chart 10 times per second). The chart cannot be used to diagnose performance issues as it only shows what we generated, not when or if the pulse was actually sent.
-
 ### Channel swap button
 
 The channel swap button (with two opposing arrows) swaps the output on channel A and channel B when active. This is helpful if you connected your electrodes the wrong way round, or if you are playing an HWL file where the original audio had different electrode placement to Howl's preferred setup.
 
-It does not swap the power controls, only what is output (i.e. channel A power always controls Coyote channel A regardless of this setting). The channel swap is also not reflected by the pulse charts, as it happens later in the pipeline.
+It does not swap the power controls, only what is output (i.e. channel A power always controls Coyote channel A regardless of this setting).
 
 ### Frequency range slider
 
@@ -140,12 +170,15 @@ The "Player" tab allows you to play back different kinds of files. Currently it 
 
 This section explains the function of all the player options.
 
-#### General settings
+#### Global settings
+
+The player's global settings affect all app output (features like the generator and activities also send their output via the player). Be careful not to unintentionally leave them active.
+
+**Playback speed**
+This controls the rate at which the player counts time, allowing any content Howl can play to be sped up or slowed down. The playback speed can be set from 0.25x to 4.0x, in increments of 0.25. For example setting this control to 0.5 will play at half speed. Setting it to 2.0 will play at double speed. 1.0 is the most typical setting and plays at normal rate.
 
 **Invert channel A/B frequencies**
 This inverts all the frequencies played on that channel. So if it would have played the lowest frequency, it will instead play the highest frequency (and vice versa). Setting one or both of these when playing a converted audio file can be interesting, and sometimes gives a very different experience.
-
-Be careful not to unintentionally leave this setting enabled, as it will affect all app output (features like the generator and activities also send their output via the player).
 
 #### Funscript settings
 
@@ -204,7 +237,7 @@ The activities are generally designed with the default 10Hz-100Hz frequency rang
 A short description of the currently available activities is given below. Please keep in mind that nothing is gender restricted, regardless of how it's described. One of the great things about estim is that it's all just electrons, and your perception of patterns could be different from mine.
 
 ### Additive
-Inspired by the audio technique of additive synthesis, this activity takes two simple underlying waves and combines them in different proportions to generate the output amplitudes and frequencies. We also periodically change the speeds and shapes of the underlying waves, as well as the proportions used to combine them. The end result produces some very complicated and interesting patterns, which will keep changing over time as we modify parameters.
+Inspired by the audio technique of additive synthesis, this activity takes two simple underlying waves and combines them in different proportions to generate the output amplitudes. Frequencies are generated in a similar way, by combining another two waves in different proportions. We periodically change the speeds and shapes of the underlying waves, as well as the proportions used to combine them. The end result produces some very complicated and interesting patterns, which will keep changing over time as we modify parameters.
 
 ### BJ megamix
 An ambitious activity that moves randomly between four distinct stages, intended to represent aspects of a blowjob. The stages are suck, deepthroat, tip licks, and full length (base to tip) licks. The licking stages are typically shorter and are intended to break up the main patterns and make the flow of the activity more interesting. Can you feel the differences between all four patterns?
@@ -245,15 +278,31 @@ These are all the parameters that can be set on the Coyote itself. Functionality
 Limits the device power on that channel to the selected level.
 
 **Channel A/B Frequency Balance**
-This controls the relative strength of high and low frequencies on that channel. Higher values give stronger low frequencies. The default is 160.
+This controls the relative strength of high and low frequencies on that channel. Higher values give stronger low frequencies. Our default is 200 (refer to the "Calibration 2" section above to optimise for your own electrode setup).
 
 **Channel A/B Intensity Balance**
 This seems to be another way to adjust the low frequencies on the relevant channel. I haven't found it very useful and tend to leave it at 0. It seems to mainly affect the very lowest supported frequencies, e.g. instead of playing at 1Hz it will actually send 10Hz if you increase the intensity balance a bit. I don't think it's particularly helpful for this app, since if you don't want the very lowest frequencies, you can just adjust the main frequency range control.
 
-### Misc options
+### Power options
 
 **Power control step size**
 This sets how much the power level changes by when you press the large plus/minus buttons in Howl to change the channel A or B power. The default is 1. This is a convenience setting for users who like to use high power levels, allowing them to be reached without having to press the adjustment buttons as many times. The step size can be independently configured for each channel, which can be helpful when using different types of electrode.
+
+**Power auto increase delay**
+This sets the delay in seconds which should elapse each time we automatically increase the power. It only has an effect when the automatic power increase button on the main control panel is toggled on. See the section on the automatic power increase button for further caveats around when the automatic increase happens.
+
+The delay can be configured independently for each channel, which can be helpful when using different types of electrode.
+
+### Misc options
+
+**Smoother charts & meters**
+This setting causes our charts and meters to update with every pulse (40 times per second) instead of every batch (10 times per second). This looks nicer, but uses additional resources and energy. The difference is only visual, pulse output remains smooth with either setting.
+
+**Show animated power meters**
+This setting causes animated power meters to be shown for each channel on the main control panel. Disabling it removes the meters, reducing resource usage.
+
+**Show debug log tab**
+When this setting is enabled, a "Debug" tab becomes visible, located to the right of "Settings" on the main tab bar (on narrower devices you may need to scroll the bar to see it). The debug tab shows information from Howl's internal log, which may sometimes be useful for troubleshooting issues.
 
 ## About HWL files and how to make them
 
@@ -291,11 +340,14 @@ After installing, do the following whenever you want to run the converter script
 
 ## Common questions and answers
 
-**Can I use Howl with a different estim device?**
-No, Howl is written specifically for the Coyote 3 and the Bluetooth protocol it uses.
-
 **Can I use Howl on iOS?**
-Unfortunately not. Howl is a native Android app, and it's not possible to port it to other platforms without writing most of the app again.
+No. Howl is a native Android app, so it's unlikely that an iOS version will ever exist (that would require rewriting most of the app).
+
+**Does Howl support the Coyote 2?**
+No. There's no specific reason it can't, but the Coyote 2 uses a different Bluetooth protocol to the 3. I don't own one for testing, so am not likely to be able to implement that myself. The Coyote 2 hardware also only supports a 10hz update rate (4x less than the 3), which probably isn't fast enough to give good results with a lot of Howl's patterns.
+
+**Does Howl support stereo stim?**
+No. Doing so would be a technical challenge due to the more "digital" way Howl works, with a discrete update interval. And because we don't generate the underlying waves which would be needed to generate sounds (essentially we say to the Coyote API something like "Please play a 70Hz wave" and it takes care of the actual wave generation). Generating sounds would be an interesting avenue to explore though, it's something I might possibly investigate in future.
 
 ## Developer info
 
@@ -322,7 +374,7 @@ HWL files are always stereo - mono source files are lazily supported by just sto
 
 Howl is a simple hobbyist app, and does not include any adverts or tracking. It does not send anything over the internet, and doesn't require internet access.
 
-The app will ask for location permissions. Howl does not track your location at all, and this is simply because the location permission is required to scan for Bluetooth devices on most versions of Android (in theory it's not supposed to be needed after Android 12, but we found a lot of devices didn't follow Google's specification and still needed it, so for maximum compatibility we just always require the permission).
+On Android versions before 12, the app will ask for location permissions. Howl does not track your location at all, and this is simply because the location permission is required to scan for Bluetooth devices on those versions. On later versions of Android, the app only requires Bluetooth permissions.
 
 ## License
 

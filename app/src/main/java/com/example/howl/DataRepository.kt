@@ -5,18 +5,27 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlin.Boolean
 import kotlin.time.TimeMark
 import kotlin.Float
 
 const val showDeveloperOptions = false
+const val howlVersion = "0.4"
 
 object DataRepository {
     var database: HowlDatabase? = null
 
-    private val _pulseHistory: MutableStateFlow<List<Pulse>> = MutableStateFlow(emptyList())
-    val pulseHistory: StateFlow<List<Pulse>> = _pulseHistory.asStateFlow()
-    const val MAX_HISTORY_SIZE = 200
+    private val _lastPulse = MutableStateFlow(Pulse())
+    val lastPulse: StateFlow<Pulse> = _lastPulse.asStateFlow()
+
+    private val _pulseHistoryVersion = MutableStateFlow(0)
+    val pulseHistoryVersion: StateFlow<Int> = _pulseHistoryVersion.asStateFlow()
+
+    const val PULSE_HISTORY_SIZE = 200
+    val pulseHistoryDeque: ArrayDeque<Pulse> = ArrayDeque(PULSE_HISTORY_SIZE)
+    private val pulseHistoryMutex = Mutex()
 
     private val _playerState = MutableStateFlow(PlayerState())
     val playerState: StateFlow<PlayerState> = _playerState.asStateFlow()
@@ -98,6 +107,10 @@ object DataRepository {
         _mainOptionsState.update { it.copy(globalMute = muted)}
     }
 
+    fun setAutoIncreasePower(autoIncrease: Boolean) {
+        _mainOptionsState.update { it.copy(autoIncreasePower = autoIncrease)}
+    }
+
     fun setPulseChartMode(mode: PulseChartMode) {
         _mainOptionsState.update { it.copy(pulseChartMode = mode)}
     }
@@ -122,18 +135,29 @@ object DataRepository {
         _generatorState.update { newGeneratorState }
     }
 
-    fun addPulsesToHistory(newPulses: List<Pulse>) {
-        _pulseHistory.update {
-            _pulseHistory.value.toMutableList().apply {
-                this.addAll(newPulses)
-                while (this.size > MAX_HISTORY_SIZE)
-                    this.removeAt(0)
+    suspend fun addPulsesToHistory(newPulses: List<Pulse>) {
+        pulseHistoryMutex.withLock {
+            pulseHistoryDeque.addAll(newPulses)
+            while (pulseHistoryDeque.size > PULSE_HISTORY_SIZE) {
+                pulseHistoryDeque.removeFirst()
             }
+            _lastPulse.update { pulseHistoryDeque.last() }
+            _pulseHistoryVersion.update { it + 1 }
         }
     }
 
-    fun clearPulseHistory() {
-        _pulseHistory.update { emptyList() }
+    suspend fun clearPulseHistory() {
+        pulseHistoryMutex.withLock {
+            pulseHistoryDeque.clear()
+            _lastPulse.value = Pulse()
+            _pulseHistoryVersion.update { it + 1 }
+        }
+    }
+
+    suspend fun getPulseHistory(): List<Pulse> {
+        return pulseHistoryMutex.withLock {
+            pulseHistoryDeque.toList()
+        }
     }
 
     fun initialise(db: HowlDatabase) {
@@ -141,7 +165,7 @@ object DataRepository {
     }
 
     suspend fun saveSettings() {
-        Log.v("Howl", "Saving settings")
+        HLog.d("DataRepository", "Saving settings")
         val settings = SavedSettings(
             channelALimit = coyoteParametersState.value.channelALimit,
             channelBLimit = coyoteParametersState.value.channelBLimit,
@@ -149,12 +173,9 @@ object DataRepository {
             channelBIntensityBalance = coyoteParametersState.value.channelBIntensityBalance,
             channelAFrequencyBalance = coyoteParametersState.value.channelAFrequencyBalance,
             channelBFrequencyBalance = coyoteParametersState.value.channelBFrequencyBalance,
+            playbackSpeed = playerAdvancedControlsState.value.playbackSpeed,
             frequencyInversionA = playerAdvancedControlsState.value.frequencyInversionA,
             frequencyInversionB = playerAdvancedControlsState.value.frequencyInversionB,
-            frequencyModEnable = playerAdvancedControlsState.value.frequencyModEnable,
-            frequencyModStrength = playerAdvancedControlsState.value.frequencyModStrength,
-            frequencyModPeriod = playerAdvancedControlsState.value.frequencyModPeriod,
-            frequencyModInvert = playerAdvancedControlsState.value.frequencyModInvert,
             funscriptVolume = playerAdvancedControlsState.value.funscriptVolume,
             funscriptPositionalEffectStrength = playerAdvancedControlsState.value.funscriptPositionalEffectStrength,
             funscriptFeel = playerAdvancedControlsState.value.funscriptFeel,
@@ -165,14 +186,19 @@ object DataRepository {
             frequencyChangeProbability = generatorState.value.frequencyChangeProbability,
             waveChangeProbability = generatorState.value.waveChangeProbability,
             activityChangeProbability = activityState.value.activityChangeProbability,
+            showPowerMeter = miscOptionsState.value.showPowerMeter,
+            smootherCharts = miscOptionsState.value.smootherCharts,
+            showDebugLog = miscOptionsState.value.showDebugLog,
             powerStepSizeA = miscOptionsState.value.powerStepSizeA,
-            powerStepSizeB = miscOptionsState.value.powerStepSizeB
+            powerStepSizeB = miscOptionsState.value.powerStepSizeB,
+            powerAutoIncrementDelayA = miscOptionsState.value.powerAutoIncrementDelayA,
+            powerAutoIncrementDelayB = miscOptionsState.value.powerAutoIncrementDelayB
         )
         database?.savedSettingsDao()?.updateSettings(settings)
     }
 
     suspend fun loadSettings(){
-        Log.v("Howl", "Loading settings")
+        HLog.d("DataRepository", "Loading settings")
         var settings = database?.savedSettingsDao()?.getSettings()
         if (settings==null)
             settings = SavedSettings()
@@ -185,12 +211,9 @@ object DataRepository {
             channelBFrequencyBalance = settings.channelBFrequencyBalance
         ))
         setPlayerAdvancedControlsState(PlayerAdvancedControlsState(
+            playbackSpeed = settings.playbackSpeed,
             frequencyInversionA = settings.frequencyInversionA,
             frequencyInversionB = settings.frequencyInversionB,
-            frequencyModEnable = settings.frequencyModEnable,
-            frequencyModStrength = settings.frequencyModStrength,
-            frequencyModPeriod = settings.frequencyModPeriod,
-            frequencyModInvert = settings.frequencyModInvert,
             funscriptVolume = settings.funscriptVolume,
             funscriptPositionalEffectStrength = settings.funscriptPositionalEffectStrength,
             funscriptFeel = settings.funscriptFeel,
@@ -204,8 +227,13 @@ object DataRepository {
             waveChangeProbability = settings.waveChangeProbability,
         ))
         setMiscOptionsState(MiscOptionsState(
+            showPowerMeter = settings.showPowerMeter,
+            smootherCharts = settings.smootherCharts,
+            showDebugLog = settings.showDebugLog,
             powerStepSizeA = settings.powerStepSizeA,
-            powerStepSizeB = settings.powerStepSizeB
+            powerStepSizeB = settings.powerStepSizeB,
+            powerAutoIncrementDelayA = settings.powerAutoIncrementDelayA,
+            powerAutoIncrementDelayB = settings.powerAutoIncrementDelayB
         ))
         setActivityState(activityState.value.copy(
             activityChangeProbability = settings.activityChangeProbability
@@ -237,12 +265,9 @@ object DataRepository {
     )
 
     data class PlayerAdvancedControlsState (
+        val playbackSpeed: Float = 1.0f,
         val frequencyInversionA: Boolean = false,
         val frequencyInversionB: Boolean = false,
-        val frequencyModEnable: Boolean = false,
-        val frequencyModStrength: Float = 0.1f,
-        val frequencyModPeriod: Float = 1.0f,
-        val frequencyModInvert: Boolean = false,
         var funscriptVolume: Float = 0.5f,
         val funscriptPositionalEffectStrength: Float = 1.0f,
         var funscriptFeel: Float = 1.0f,
@@ -253,14 +278,20 @@ object DataRepository {
         val channelAPower: Int = 0,
         val channelBPower: Int = 0,
         val globalMute: Boolean = false,
+        val autoIncreasePower: Boolean = false,
         val swapChannels: Boolean = false,
         val frequencyRange: ClosedFloatingPointRange<Float> = 10f..100f,
         val pulseChartMode: PulseChartMode = PulseChartMode.Off
     )
 
     data class MiscOptionsState (
+        val showPowerMeter: Boolean = true,
+        val smootherCharts: Boolean = true,
+        val showDebugLog: Boolean = false,
         val powerStepSizeA: Int = 1,
         val powerStepSizeB: Int = 1,
+        val powerAutoIncrementDelayA: Int = 120,
+        val powerAutoIncrementDelayB: Int = 120,
     )
 
     data class DeveloperOptionsState (

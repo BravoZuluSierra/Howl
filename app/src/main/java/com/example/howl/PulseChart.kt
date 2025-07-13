@@ -11,7 +11,7 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.material3.MaterialTheme
-
+import androidx.compose.runtime.produceState
 
 enum class PulseChartMode(val description: String) {
     Off("Off"),
@@ -35,7 +35,13 @@ fun PulsePlotter(
     modifier: Modifier = Modifier,
     mode: PulsePlotMode = PulsePlotMode.Combined
 ) {
-    val pulses by DataRepository.pulseHistory.collectAsStateWithLifecycle()
+    val pulseHistoryVersion by DataRepository.pulseHistoryVersion.collectAsStateWithLifecycle()
+    val pulses by produceState<List<Pulse>>(initialValue = emptyList(), pulseHistoryVersion) {
+        value = DataRepository.getPulseHistory()
+    }
+    /*val pulses = remember(pulseHistoryVersion) {
+        DataRepository.getPulseHistory()
+    }*/
     val backgroundColor = MaterialTheme.colorScheme.background
 
     Canvas(modifier = modifier.background(backgroundColor)) {
@@ -50,7 +56,7 @@ fun PulsePlotter(
 
         for ((index, pulse) in pulses.withIndex()) {
             // Calculate X position (oldest left, newest right)
-            val x = index.toFloat() / (DataRepository.MAX_HISTORY_SIZE - 1) * canvasWidth
+            val x = index.toFloat() / (DataRepository.PULSE_HISTORY_SIZE - 1) * canvasWidth
 
             // Channel A
             drawPoint(
@@ -98,7 +104,7 @@ private fun DrawScope.drawPoint(
 
     drawCircle(
         color = color,
-        radius = 3f,
+        radius = 4f,
         center = Offset(x, y)
     )
 }

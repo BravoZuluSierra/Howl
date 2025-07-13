@@ -19,17 +19,14 @@ data class SavedSettings(
     //All the Coyote parameters
     val channelALimit: Int = 70,
     val channelBLimit: Int = 70,
-    val channelAFrequencyBalance: Int = 160,
-    val channelBFrequencyBalance: Int = 160,
+    val channelAFrequencyBalance: Int = 200,
+    val channelBFrequencyBalance: Int = 200,
     val channelAIntensityBalance: Int = 0,
     val channelBIntensityBalance: Int = 0,
     //Player advanced controls
+    val playbackSpeed: Float = 1.0f,
     val frequencyInversionA: Boolean = false,
     val frequencyInversionB: Boolean = false,
-    val frequencyModEnable: Boolean = false,
-    val frequencyModStrength: Float = 0.1f,
-    val frequencyModPeriod: Float = 1.0f,
-    val frequencyModInvert: Boolean = false,
     var funscriptVolume: Float = 0.5f,
     val funscriptPositionalEffectStrength: Float = 1.0f,
     var funscriptFeel: Float = 1.0f,
@@ -43,8 +40,13 @@ data class SavedSettings(
     //Activity settings
     val activityChangeProbability: Float = 0.0f,
     //Misc options
+    val showPowerMeter: Boolean = true,
+    val smootherCharts: Boolean = true,
+    val showDebugLog: Boolean = false,
     val powerStepSizeA: Int = 1,
-    val powerStepSizeB: Int = 1
+    val powerStepSizeB: Int = 1,
+    val powerAutoIncrementDelayA: Int = 120,
+    val powerAutoIncrementDelayB: Int = 120,
 )
 
 @Dao
@@ -59,7 +61,7 @@ interface SavedSettingsDao {
 
 @Database(
     entities = [SavedSettings::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class HowlDatabase : RoomDatabase() {

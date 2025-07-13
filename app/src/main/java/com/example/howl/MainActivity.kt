@@ -1,5 +1,6 @@
 package com.example.howl
 
+import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import androidx.activity.ComponentActivity
@@ -41,9 +42,13 @@ class MainActivity : ComponentActivity() {
                 val activityHostViewModel: ActivityHostViewModel = viewModel()
                 val coyoteParametersViewModel: CoyoteParametersViewModel = viewModel()
                 LaunchedEffect(true) {
+                    val androidVersion = Build.VERSION.RELEASE
+                    val androidSDK = Build.VERSION.SDK_INT
+                    HLog.d("Howl", "Howl ${howlVersion} running on Android $androidVersion (SDK $androidSDK)")
                     DataRepository.loadSettings()
                 }
                 Generator.initialise()
+                Player.initialise(context = this)
                 DGCoyote.initialize(context = this,
                     onConnectionStatusUpdate = { DataRepository.setCoyoteConnectionStatus(it) },
                     onBatteryLevelUpdate = { DataRepository.setCoyoteBatteryLevel(it) },
@@ -56,7 +61,6 @@ class MainActivity : ComponentActivity() {
 
                 val connectionStatus by DataRepository.coyoteConnectionStatus.collectAsStateWithLifecycle()
                 val batteryPercent by DataRepository.coyoteBatteryLevel.collectAsStateWithLifecycle()
-                val tabIndex by tabLayoutViewModel.tabIndex.collectAsStateWithLifecycle()
 
                 Scaffold(
                     bottomBar = {
@@ -77,9 +81,7 @@ class MainActivity : ComponentActivity() {
                             viewModel = mainOptionsViewModel
                         )
                         TabLayout (
-                            tabIndex = tabIndex,
-                            tabs = tabLayoutViewModel.tabs,
-                            onTabChange = { tabLayoutViewModel.setTabIndex(it) },
+                            tabLayoutViewModel = tabLayoutViewModel,
                             playerViewModel = playerViewModel,
                             coyoteParametersViewModel = coyoteParametersViewModel,
                             generatorViewModel = generatorViewModel,
